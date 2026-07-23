@@ -1,55 +1,65 @@
-# M1 ablations — per-frame latency, GB10 (ThinkStation PGX)
+# Ablations — per-frame latency, GB10 (ThinkStation PGX)
 
-Protocol: `bench/protocol.md` (500 frames, seed 42424, serve-path parity:
-2x mimi encode + lm_gen.step + 2x mimi decode + D2H, cores 5-9,15-19,
-per-stage CUDA-synced timers, warm_skip 25 -> 475 frames summarized).
-Weights: **real `nvidia/personaplex-7b-v1`** (HF access granted 2026-07-23),
-voice prompt `NATM1.pt`, default sampling (temp 0.8/0.7, topk 250/25).
-Env: torch 2.13.0+cu130, CUDA driver 595.71.05, GB10 sm_121, GPU otherwise
-idle. Full per-cell env blocks and time-series CSVs in the sibling dirs.
+Protocol: `bench/protocol.md` (500 frames, seed 42424, per-stage CUDA-synced
+timers, cores 5-9,15-19, warm_skip 25 -> 475 frames summarized). Weights:
+**real `nvidia/personaplex-7b-v1`**, voice prompt `NATM1.pt`, default
+sampling. Env: torch 2.13.0+cu130, driver 595.71.05, GB10 sm_121, GPU
+otherwise idle. Budget: one 80 ms frame per 80 ms.
 
-Budget: one 80 ms frame per 80 ms.
+Rows above the line keep full serve-path parity (both mimi streams, fp32
+mimi). Rows below also change the mimi path (still headless serve-shape,
+but stage mix differs — see flags).
 
-## total_ms (full serve-path frame)
+## total_ms (full frame)
 
-| config       | p50    | p99    | p99.9  | max    | 80ms misses |
-|--------------|--------|--------|--------|--------|-------------|
-| bf16 (stock) | 101.66 | 103.52 | 103.59 | 103.61 | 475/475     |
-| bf16 + depq8 |  91.43 |  93.59 |  94.49 |  94.64 | 475/475     |
-| fp8          |  77.61 |  78.86 |  79.50 |  79.70 | **0/475**   |
-| fp8 + depq8  |  68.71 |  69.75 |  70.28 |  70.56 | **0/475**   |
+| config | p50 | p99 | p99.9 | max | 80ms misses |
+|---|---|---|---|---|---|
+| bf16 (stock) | 101.66 | 103.52 | 103.59 | 103.61 | 475/475 |
+| bf16 + depq8 | 91.43 | 93.59 | 94.49 | 94.64 | 475/475 |
+| fp8 | 77.61 | 78.86 | 79.50 | 79.70 | **0/475** |
+| fp8 + depq8 | 68.71 | 69.75 | 70.28 | 70.56 | **0/475** |
+| --- | | | | | |
+| fp8 + depq8 + skip-other-mimi | 63.33 | 64.50 | 64.79 | 64.81 | 0/475 |
+| fp8 + depq8 + skipother + mimi-fp16 | **61.43** | 62.37 | 62.50 | 62.51 | 0/475 |
 
 ## step_ms (lm_gen.step only)
 
-| config       | p50   | p99   | p99.9 |
-|--------------|-------|-------|-------|
+| config | p50 | p99 | p99.9 |
+|---|---|---|---|
 | bf16 (stock) | 91.35 | 93.17 | 93.28 |
 | bf16 + depq8 | 81.03 | 83.05 | 83.66 |
-| fp8          | 67.20 | 68.37 | 68.82 |
-| fp8 + depq8  | 58.35 | 59.38 | 59.51 |
+| fp8 | 67.20 | 68.37 | 68.82 |
+| fp8 + depq8 | 58.35 | 59.38 | 59.51 |
+| fp8 + depq8 + skipother(+mimifp16) | 58.2-58.3 | ~59.0 | ~59.2 |
 
-## Notes
+(w8a16 rows pending — cells running; will be added with the divergence
+soak results.)
 
-- **fp8 alone already clears the 80 ms budget** (max 79.70 over 475
-  frames — thin margin); **fp8 + depq8 gives ~11 ms of tail headroom**
-  (max 70.56). Neither bf16 cell ever makes budget.
-- Effects compose almost exactly: fp8 -24.2 ms step, depq8 -10.3 ms
-  (bf16) / -8.9 ms (fp8), combined -33.0 ms.
-- amarrmb reference on DGX Spark: lm_step ~70 ms with fp8; we measure
-  67.2 ms with their quantization recipe (and their 74.2 ms total also
-  skipped the second mimi stream, which this protocol keeps for parity).
-- torch 2.13.0+cu130 note: the fp8 path (`torch._scaled_mm` with
-  per-tensor scales) ran **unmodified** — no API drift from the
-  torch 2.9/2.10 the amarrmb fork targeted. fp8_quantize.py reports 321
-  quantized Linears + 32 in_proj weights; quantize takes 0.33 s at load.
-- Proxy validation: the pre-access baseline on kyutai/moshiko-pytorch-bf16
-  (architecture-identical) measured total p50 101.58 / step p50 91.28 vs
-  101.66 / 91.35 on real weights — proxy latency numbers transfer within
-  ~0.1 ms.
-- Quality/artifact metrics for fp8 and depq8 are NOT covered here
-  (latency-only protocol); depq8 is provably output-invariant in the
-  serve flow (skipped codebooks are always overwritten by provided user
-  tokens), fp8 is not (weight quantization) and needs a listening/metric
-  pass in a later milestone.
-- Cold start (fp8 cell): mimi 5.7 s, LM load 135.9 s, quantize 0.3 s,
-  warmup 2.3 s, voice+text prompt phase 6.2 s -> 150.7 s total.
+## Attribution / notes
+
+- **fp8 alone already clears the 80 ms budget** (max 79.70); fp8+depq8
+  gives ~11 ms tail headroom; the mimi-side adds bring p50 to **61.4 ms**
+  (~19 ms headroom). Neither bf16 cell ever makes budget.
+- Effects compose additively: fp8 -24.2 ms step, depq8 -10.3 ms step,
+  skip-other-mimi -5.4 ms total (encode_other 3.0 + decode_other 2.1 +
+  stage-boundary syncs), mimi-fp16+compile -1.9 ms total (encode 2.94 ->
+  1.78, decode 2.11 -> 1.45; torch.compile/Triton works on sm_121 with the
+  system-ptxas symlink).
+- **skip-other-mimi safety**: every `other_mimi.encode/decode` result in
+  server.py is assigned to `_` and discarded (lines 123/129/225/232 at
+  3428dfd) and its state feeds nothing — the stream is pure discarded
+  work. Kept ON by default in the protocol rows above the line for parity
+  with stock server.py.
+- **Attention (T1) measured no-go**: for the decode shape (q=1, kv=3000,
+  H=32, d=128, bf16) FLASH (no-mask), CUDNN, and EFFICIENT backends all
+  land at 200-222 us/call (6.5-7.1 ms/frame x32); the op is KV-cache
+  bandwidth-bound (~1.57 GB/frame -> ~5.7 ms floor at 273 GB/s), so no
+  backend swap or custom kernel recovers meaningful time. The sm80-named
+  fmha kernel is already ~87% of the bandwidth bound. MATH backend: 46 ms
+  (avoid).
+- amarrmb reference: their 74.2 ms total included skip-other + fp16 mimi;
+  our equivalent config measures 61.4 ms (and 63.3 with fp32 mimi).
+- Quality: depq8 is provably output-invariant in the serve flow; fp8 is
+  not — see the divergence soak (DIVERGENCE.md, pending) and paired WAVs
+  in bench/results/20260723-audio/ (bf16 / fp8 / fp8-depq8 / w8a16, same
+  seed, prompt, and 30 s deterministic input).

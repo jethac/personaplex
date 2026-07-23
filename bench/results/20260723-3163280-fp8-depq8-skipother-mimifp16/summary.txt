@@ -1,0 +1,14 @@
+config: fp8-depq8-skipother-mimifp16
+frames: 475 summarized (of 500, warm_skip=25)
+cold start: load_mimi_s=2.81s, load_tokenizer_s=0.20s, load_lm_s=109.18s, fp8_quantize_s=0.32s, warmup_s=11.95s, voice_prompt=/home/jethac/.cache/huggingface/hub/models--nvidia--personaplex-7b-v1/snapshots/fdaf4090a61cb315c138a1faee287ffd6c716309/voices/NATM1.pt, prompt_phase_s=5.46s, total_cold_start_s=130.07s
+budget 80ms: 0 misses (0.00%), longest streak 0
+stage                  mean      p50      p90      p95      p99    p99.9      max
+---------------------------------------------------------------------------------
+total_ms              61.55    61.43    62.13    62.22    62.37    62.50    62.51
+opus_ms                0.00     0.00     0.00     0.00     0.00     0.00     0.00
+encode_main_ms         1.78     1.78     1.79     1.79     1.91     2.41     2.49
+encode_other_ms        0.00     0.00     0.00     0.00     0.00     0.00     0.00
+step_ms               58.23    58.12    58.79    58.91    59.02    59.20    59.21
+decode_main_ms         1.45     1.45     1.45     1.46     1.51     2.10     2.27
+decode_other_ms        0.00     0.00     0.00     0.00     0.00     0.00     0.00
+d2h_ms                 0.02     0.02     0.02     0.02     0.03     0.05     0.06
