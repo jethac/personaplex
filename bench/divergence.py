@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: MIT
 """FP8-vs-bf16 divergence soak for PersonaPlex (M2 tolerance-ladder gate).
 
-Runs the SAME seeded input through a bf16 LM and an FP8-quantized LM in one
-process, frame-interleaved, with per-model pinned RNG streams (state swap
-around each step), so that:
+Runs the SAME seeded input through a bf16 reference LM and one or more
+quantized LMs (full FP8 and/or weight-only w8a16) in one process,
+frame-interleaved, with per-model pinned RNG streams (state swap around
+each step), so that:
 
 - both models see identical user-audio codes each frame (shared fp32 mimi
   encoder),
@@ -128,32 +129,41 @@ def spectral_stats(frame_np):
     return centroid, flatness
 
 
-def run_seed(seed, args, mimi, gen_bf16, gen_fp8, frame_size, out_dir):
+def run_seed(seed, args, mimi, gen_ref, quant_gens, dec_mimis, frame_size, out_dir):
+    """quant_gens: list of (name, LMGen); dec_mimis: {name: MimiModel}."""
     log(f"=== seed {seed} ===")
     seed_all(seed)
-    # fresh streaming sessions (recaptures CUDA graphs)
     mimi.reset_streaming()
-    gen_bf16.reset_streaming()
-    gen_fp8.reset_streaming()
+    gen_ref.reset_streaming()
+    for _, g in quant_gens:
+        g.reset_streaming()
+    for m in dec_mimis.values():
+        m.reset_streaming()
 
-    # identical starting RNG for both models
-    rng_bf16 = RngStream()
-    seed_all(seed)
-    rng_fp8 = RngStream()
+    # identical starting RNG for every model
+    seed_all(seed); rng_ref = RngStream()
+    rngs = {}
+    for name, _ in quant_gens:
+        seed_all(seed); rngs[name] = RngStream()
 
     pattern = build_input_pattern(mimi.sample_rate, seed)
     pos = 0
 
+    names = [n for n, _ in quant_gens]
     csv_path = out_dir / f"seed{seed}-frames.csv"
     f = open(csv_path, "w")
-    f.write("frame,diverged,text_l2,text_maxabs,audio_l2,audio_maxabs,"
-            "fp8_rms,fp8_click,fp8_centroid_hz,fp8_flatness\n")
+    cols = ["frame"]
+    for n in names:
+        cols += [f"{n}_diverged", f"{n}_text_l2", f"{n}_text_maxabs",
+                 f"{n}_audio_l2", f"{n}_audio_maxabs",
+                 f"{n}_rms", f"{n}_click", f"{n}_centroid_hz", f"{n}_flatness"]
+    f.write(",".join(cols) + "\n")
 
-    diverged_at = None
-    diverge_channel = None
-    deltas = []          # (frame, text_l2, audio_l2) pre-divergence
-    health = []          # (frame, rms, click, centroid, flatness)
-    prev_tail = 0.0
+    diverged_at = {n: None for n in names}
+    diverge_channel = {n: None for n in names}
+    deltas = {n: [] for n in names}      # (frame, text_l2, audio_l2)
+    health = {n: [] for n in names}      # (frame, rms, click, cen, flat)
+    prev_tail = {n: 0.0 for n in names}
     t0 = time.perf_counter()
 
     with torch.no_grad():
@@ -162,110 +172,101 @@ def run_seed(seed, args, mimi, gen_bf16, gen_fp8, frame_size, out_dir):
             pos = (pos + frame_size) % len(pattern)
             chunk = torch.from_numpy(pattern[idx]).to(args.device).view(1, 1, frame_size)
             codes = mimi.encode(chunk)
+            step_in = codes[:, :, 0:1]
 
-            row = {k: "" for k in ["text_l2", "text_maxabs", "audio_l2",
-                                   "audio_maxabs", "fp8_rms", "fp8_click",
-                                   "fp8_centroid_hz", "fp8_flatness"]}
+            out_ref = rng_ref.run(lambda: gen_ref.step(step_in))
+            outs = {}
+            for name, g in quant_gens:
+                outs[name] = rngs[name].run(lambda g=g: g.step(step_in))
 
-            for c in range(codes.shape[-1]):
-                step_in = codes[:, :, c: c + 1]
-                out_b = rng_bf16.run(lambda: gen_bf16.step(step_in))
-                out_f = rng_fp8.run(lambda: gen_fp8.step(step_in))
-            tok_b, logits_b = out_b
-            tok_f, logits_f = out_f
-            if tok_b is None or tok_f is None:
-                assert tok_b is None and tok_f is None
-                f.write(f"{fr},,,,,,,,,\n")
+            tok_r, logits_r = out_ref
+            row = {c: "" for c in cols[1:]}
+            if tok_r is None:
+                f.write(f"{fr}," + ",".join(row[c] for c in cols[1:]) + "\n")
                 continue
 
-            if diverged_at is None:
-                # compare text + 8 agent audio channels
-                same = torch.equal(tok_b[0, :9, 0], tok_f[0, :9, 0])
-                lt_b, la_b = logits_b
-                lt_f, la_f = logits_f
-                dt = (lt_b.float() - lt_f.float())
-                da = (la_b[:, :8].float() - la_f[:, :8].float())
-                row["text_l2"] = f"{dt.norm().item():.4f}"
-                row["text_maxabs"] = f"{dt.abs().max().item():.4f}"
-                row["audio_l2"] = f"{da.norm().item():.4f}"
-                row["audio_maxabs"] = f"{da.abs().max().item():.4f}"
-                deltas.append((fr, float(row["text_l2"]), float(row["audio_l2"])))
-                if not same:
-                    mism = (tok_b[0, :9, 0] != tok_f[0, :9, 0]).nonzero().flatten().tolist()
-                    diverged_at = fr
-                    diverge_channel = mism
-                    log(f"seed {seed}: first divergence at frame {fr}, channels {mism}")
+            lt_r, la_r = logits_r
+            for name, _ in quant_gens:
+                tok_q, logits_q = outs[name]
+                if diverged_at[name] is None:
+                    same = torch.equal(tok_r[0, :9, 0], tok_q[0, :9, 0])
+                    lt_q, la_q = logits_q
+                    dt = lt_r.float() - lt_q.float()
+                    da = la_r[:, :8].float() - la_q[:, :8].float()
+                    row[f"{name}_text_l2"] = f"{dt.norm().item():.4f}"
+                    row[f"{name}_text_maxabs"] = f"{dt.abs().max().item():.4f}"
+                    row[f"{name}_audio_l2"] = f"{da.norm().item():.4f}"
+                    row[f"{name}_audio_maxabs"] = f"{da.abs().max().item():.4f}"
+                    deltas[name].append((fr, float(row[f"{name}_text_l2"]),
+                                         float(row[f"{name}_audio_l2"])))
+                    if not same:
+                        mism = (tok_r[0, :9, 0] != tok_q[0, :9, 0]).nonzero().flatten().tolist()
+                        diverged_at[name] = fr
+                        diverge_channel[name] = mism
+                        log(f"seed {seed}: {name} first divergence at frame {fr}, channels {mism}")
+                row[f"{name}_diverged"] = "1" if diverged_at[name] is not None else "0"
 
-            # fp8 stream health (decode with shared mimi decoder state)
-            pcm = mimi.decode(tok_f[:, 1:9])
-            x = pcm.float().detach().cpu().numpy()[0, 0]
-            rms = float(np.sqrt(np.mean(x * x)))
-            click = float(abs(x[0] - prev_tail))
-            prev_tail = float(x[-1])
-            cen, flat = spectral_stats(x)
-            row["fp8_rms"] = f"{rms:.5f}"
-            row["fp8_click"] = f"{click:.5f}"
-            row["fp8_centroid_hz"] = f"{cen:.1f}"
-            row["fp8_flatness"] = f"{flat:.5f}"
-            health.append((fr, rms, click, cen, flat))
+                pcm = dec_mimis[name].decode(tok_q[:, 1:9])
+                x = pcm.float().detach().cpu().numpy()[0, 0]
+                rms = float(np.sqrt(np.mean(x * x)))
+                click = float(abs(x[0] - prev_tail[name]))
+                prev_tail[name] = float(x[-1])
+                cen, flat = spectral_stats(x)
+                row[f"{name}_rms"] = f"{rms:.5f}"
+                row[f"{name}_click"] = f"{click:.5f}"
+                row[f"{name}_centroid_hz"] = f"{cen:.1f}"
+                row[f"{name}_flatness"] = f"{flat:.5f}"
+                health[name].append((fr, rms, click, cen, flat))
 
-            f.write(f"{fr},{1 if diverged_at is not None else 0},"
-                    f"{row['text_l2']},{row['text_maxabs']},{row['audio_l2']},"
-                    f"{row['audio_maxabs']},{row['fp8_rms']},{row['fp8_click']},"
-                    f"{row['fp8_centroid_hz']},{row['fp8_flatness']}\n")
+            f.write(f"{fr}," + ",".join(row[c] for c in cols[1:]) + "\n")
             if fr % 200 == 0:
                 f.flush()
                 el = time.perf_counter() - t0
-                log(f"seed {seed} frame {fr} ({el:.0f}s, "
-                    f"diverged={diverged_at})")
+                log(f"seed {seed} frame {fr} ({el:.0f}s, diverged={diverged_at})")
     f.close()
 
-    # drift trend: log-log regression of audio_l2 vs frame (skip frame<2)
     def drift_fit(series):
-        pts = [(fr, v) for fr, _, v in series if fr >= 2 and v > 0]
+        pts = [(fr, v) for fr, v in series if fr >= 2 and v > 0]
         if len(pts) < 10:
             return None, None
         lx = np.log([p[0] for p in pts]); ly = np.log([p[1] for p in pts])
-        slope, intercept = np.polyfit(lx, ly, 1)
+        slope, _ = np.polyfit(lx, ly, 1)
         return float(slope), len(pts)
 
-    exp_audio, n_pts = drift_fit(deltas)
-    text_series = [(fr, 0, t) for fr, t, _ in deltas]
-    exp_text, _ = drift_fit(text_series)
-
-    # health aggregates
-    h = np.array([(r, c) for _, r, c, _, _ in health])
-    rms_arr = h[:, 0]; click_arr = h[:, 1]
-    sil = rms_arr < SILENCE_RMS
-    # longest silence run
-    best = cur = 0
-    for s in sil:
-        cur = cur + 1 if s else 0
-        best = max(best, cur)
-    summary = {
-        "seed": seed,
-        "frames": args.frames,
-        "first_divergence_frame": diverged_at,
-        "divergence_channels": diverge_channel,
-        "pre_divergence_frames": len(deltas),
-        "drift_exponent_audio_l2": exp_audio,
-        "drift_exponent_text_l2": exp_text,
-        "drift_points": n_pts,
-        "delta_first10_audio_l2_mean": float(np.mean([d[2] for d in deltas[:10]])) if deltas else None,
-        "delta_last10_audio_l2_mean": float(np.mean([d[2] for d in deltas[-10:]])) if deltas else None,
-        "fp8_health": {
-            "rms_mean": float(rms_arr.mean()),
-            "rms_p1": float(np.percentile(rms_arr, 1)),
-            "silence_frac": float(sil.mean()),
-            "longest_silence_run_frames": int(best),
-            "click_p99": float(np.percentile(click_arr, 99)),
-            "click_max": float(click_arr.max()),
-            "clicks_over_thresh": int((click_arr > CLICK_THRESH).sum()),
-            "centroid_hz_mean": float(np.mean([c for *_, c, _ in health])),
-            "flatness_mean": float(np.mean([fl for *_, fl in health])),
-        },
-    }
-    log(f"seed {seed} summary: {json.dumps(summary['fp8_health'])}")
+    summary = {"seed": seed, "frames": args.frames, "models": {}}
+    for name in names:
+        d = deltas[name]
+        exp_audio, n_pts = drift_fit([(fr, a) for fr, _, a in d])
+        exp_text, _ = drift_fit([(fr, t) for fr, t, _ in d])
+        h = np.array([(r, c) for _, r, c, _, _ in health[name]])
+        rms_arr, click_arr = h[:, 0], h[:, 1]
+        sil = rms_arr < SILENCE_RMS
+        best = cur = 0
+        for sflag in sil:
+            cur = cur + 1 if sflag else 0
+            best = max(best, cur)
+        summary["models"][name] = {
+            "first_divergence_frame": diverged_at[name],
+            "divergence_channels": diverge_channel[name],
+            "pre_divergence_frames": len(d),
+            "drift_exponent_audio_l2": exp_audio,
+            "drift_exponent_text_l2": exp_text,
+            "drift_points": n_pts,
+            "delta_first10_audio_l2_mean": float(np.mean([x[2] for x in d[:10]])) if d else None,
+            "delta_last10_audio_l2_mean": float(np.mean([x[2] for x in d[-10:]])) if d else None,
+            "health": {
+                "rms_mean": float(rms_arr.mean()),
+                "silence_frac": float(sil.mean()),
+                "longest_silence_run_frames": int(best),
+                "click_p99": float(np.percentile(click_arr, 99)),
+                "click_max": float(click_arr.max()),
+                "clicks_over_thresh": int((click_arr > CLICK_THRESH).sum()),
+                "centroid_hz_mean": float(np.mean([c for *_, c, _ in health[name]])),
+                "flatness_mean": float(np.mean([fl for *_, fl in health[name]])),
+            },
+        }
+        log(f"seed {seed} {name}: div@{diverged_at[name]} "
+            f"exp_audio={exp_audio} health={json.dumps(summary['models'][name]['health'])}")
     return summary
 
 
@@ -277,6 +278,9 @@ def main():
     p.add_argument("--hf-repo", type=str, default="nvidia/personaplex-7b-v1")
     p.add_argument("--device", type=str, default="cuda")
     p.add_argument("--pin-cores", type=str, default="5-9,15-19")
+    p.add_argument("--schemes", type=str, default="fp8,w8a16",
+                   help="comma list of quantization schemes to soak "
+                        "against the bf16 reference (fp8, w8a16)")
     p.add_argument("--no-quantize", action="store_true",
                    help="self-test: leave the second LM in bf16 too; the run "
                         "must then show zero divergence and zero logit delta, "
@@ -298,34 +302,53 @@ def main():
     from huggingface_hub import hf_hub_download
     from moshi.models import loaders, LMGen
     from moshi.fp8_quantize import quantize_model
+    from moshi.w8a16_quantize import quantize_model_w8a16
 
-    log("loading mimi (shared fp32 encoder+decoder)")
+    schemes = [s.strip() for s in args.schemes.split(",") if s.strip()]
+
+    log("loading mimi (shared fp32 input encoder)")
     mimi_weight = hf_hub_download(args.hf_repo, loaders.MIMI_NAME)
     mimi = loaders.get_mimi(mimi_weight, args.device)
     mimi.streaming_forever(1)
 
     moshi_weight = hf_hub_download(args.hf_repo, loaders.MOSHI_NAME)
-    log("loading bf16 LM")
-    lm_bf16 = loaders.get_moshi_lm(moshi_weight, device=args.device)
-    lm_bf16.eval()
-    log("loading second LM copy")
-    lm_fp8 = loaders.get_moshi_lm(moshi_weight, device=args.device)
-    lm_fp8.eval()
-    # Pin original forwards on the reference model and mimi BEFORE
-    # quantize_model patches the classes.
-    n = pin_original_forwards(lm_bf16) + pin_original_forwards(mimi)
+    log("loading bf16 reference LM")
+    lm_ref = loaders.get_moshi_lm(moshi_weight, device=args.device)
+    lm_ref.eval()
+    # Pin original forwards on the reference model and mimi BEFORE any
+    # quantizer patches the classes.
+    n = pin_original_forwards(lm_ref) + pin_original_forwards(mimi)
     log(f"pinned original forwards on {n} bf16/mimi modules")
-    if args.no_quantize:
-        log("SELF-TEST: second LM stays bf16 (expect zero divergence)")
-        pin_original_forwards(lm_fp8)
-    else:
-        quantize_model(lm_fp8)
+
+    quant_lms = []
+    for scheme in schemes:
+        log(f"loading LM copy for scheme {scheme}")
+        lm_q = loaders.get_moshi_lm(moshi_weight, device=args.device)
+        lm_q.eval()
+        if args.no_quantize:
+            log(f"SELF-TEST: {scheme} stays bf16 (expect zero divergence)")
+            pin_original_forwards(lm_q)
+        elif scheme == "fp8":
+            quantize_model(lm_q)
+        elif scheme == "w8a16":
+            quantize_model_w8a16(lm_q)
+        else:
+            raise ValueError(f"unknown scheme {scheme}")
+        quant_lms.append((scheme, lm_q))
 
     frame_size = int(mimi.sample_rate / mimi.frame_rate)
-    gen_bf16 = make_lmgen(lm_bf16, mimi, args, LMGen)
-    gen_fp8 = make_lmgen(lm_fp8, mimi, args, LMGen)
-    gen_bf16.streaming_forever(1)
-    gen_fp8.streaming_forever(1)
+    gen_ref = make_lmgen(lm_ref, mimi, args, LMGen)
+    gen_ref.streaming_forever(1)
+    quant_gens = []
+    dec_mimis = {}
+    for scheme, lm_q in quant_lms:
+        g = make_lmgen(lm_q, mimi, args, LMGen)
+        g.streaming_forever(1)
+        quant_gens.append((scheme, g))
+        dm = loaders.get_mimi(mimi_weight, args.device)
+        pin_original_forwards(dm)
+        dm.streaming_forever(1)
+        dec_mimis[scheme] = dm
 
     env = {
         "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
@@ -333,14 +356,15 @@ def main():
         "gpu": torch.cuda.get_device_name(0),
         "frames_per_seed": args.frames,
         "seeds": args.seeds,
+        "schemes": args.schemes,
         "argv": os.sys.argv[1:],
     }
     (out_dir / "env.json").write_text(json.dumps(env, indent=2) + "\n")
 
     summaries = []
     for seed in [int(s) for s in args.seeds.split(",")]:
-        summaries.append(run_seed(seed, args, mimi, gen_bf16, gen_fp8,
-                                  frame_size, out_dir))
+        summaries.append(run_seed(seed, args, mimi, gen_ref, quant_gens,
+                                  dec_mimis, frame_size, out_dir))
         (out_dir / "summary.json").write_text(
             json.dumps(summaries, indent=2) + "\n")
     log("all seeds done")

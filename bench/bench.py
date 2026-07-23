@@ -338,6 +338,12 @@ def load_models(args, cold: dict):
         quantize_model(lm)
         cold["fp8_quantize_s"] = time.perf_counter() - t0
         log(f"FP8 quantization done in {cold['fp8_quantize_s']:.1f}s")
+    elif args.w8a16:
+        from moshi.w8a16_quantize import quantize_model_w8a16
+        t0 = time.perf_counter()
+        quantize_model_w8a16(lm)
+        cold["w8a16_quantize_s"] = time.perf_counter() - t0
+        log(f"w8a16 quantization done in {cold['w8a16_quantize_s']:.1f}s")
 
     frame_size = int(mimi.sample_rate / mimi.frame_rate)
     lm_gen = LMGen(
@@ -665,6 +671,10 @@ def main():
     p.add_argument("--greedy", action="store_true")
     p.add_argument("--fp8", action="store_true",
                    help="quantize LM linears to FP8 (torch._scaled_mm path)")
+    p.add_argument("--w8a16", action="store_true",
+                   help="weight-only 8-bit: fp8-stored weights dequantized "
+                        "in a Triton GEMV, all compute bf16 (activations "
+                        "untouched); mutually exclusive with --fp8")
     p.add_argument("--mimi-fp16", action="store_true",
                    help="run both mimi instances in fp16 and enable their "
                         "torch.compile path (amarrmb recipe)")
@@ -680,6 +690,8 @@ def main():
     p.add_argument("--device", type=str, default="cuda")
     args = p.parse_args()
 
+    if args.fp8 and args.w8a16:
+        p.error("--fp8 and --w8a16 are mutually exclusive")
     if args.smoke and args.device == "cuda" and not torch.cuda.is_available():
         args.device = "cpu"
 

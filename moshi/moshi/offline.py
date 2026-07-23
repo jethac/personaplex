@@ -170,6 +170,7 @@ def run_inference(
     save_voice_prompt_embeddings: bool,
     cpu_offload: bool = False,
     fp8: bool = False,
+    w8a16: bool = False,
     dep_q_exit: Optional[int] = None,
 ):
     """Run offline inference using an input WAV as the user-side stream.
@@ -211,6 +212,10 @@ def run_inference(
         from .fp8_quantize import quantize_model
         log("info", "applying FP8 quantization")
         quantize_model(lm)
+    elif w8a16:
+        from .w8a16_quantize import quantize_model_w8a16
+        log("info", "applying w8a16 weight-only quantization")
+        quantize_model_w8a16(lm)
     log("info", "moshi loaded")
 
     # 4) Construct LMGen like server.py's ServerState does
@@ -391,6 +396,8 @@ def main():
                         help="Offload LM model layers to CPU when GPU memory is insufficient. "
                              "Requires 'accelerate' package.")
     parser.add_argument("--seed", type=int, default=-1, help="Seed for reproducibility (-1 disables)")
+    parser.add_argument("--w8a16", action="store_true",
+                        help="Weight-only 8-bit LM quantization (bf16 compute); exclusive with --fp8")
     parser.add_argument("--fp8", action="store_true",
                         help="Quantize LM linears to FP8 (torch._scaled_mm path, requires SM >= 89)")
     parser.add_argument("--dep-q-exit", type=int, default=0,
@@ -440,6 +447,7 @@ def main():
             save_voice_prompt_embeddings=False,
             cpu_offload=args.cpu_offload,
             fp8=args.fp8,
+            w8a16=args.w8a16,
             dep_q_exit=args.dep_q_exit if args.dep_q_exit > 0 else None,
         )
 
