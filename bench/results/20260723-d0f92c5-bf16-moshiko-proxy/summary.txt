@@ -1,0 +1,14 @@
+config: bf16-moshiko-proxy
+frames: 475 summarized (of 500, warm_skip=25)
+cold start: load_mimi_s=5.87s, load_tokenizer_s=0.20s, load_lm_s=134.18s, warmup_s=5.08s, voice_prompt=None, prompt_phase_s=0.00s, total_cold_start_s=145.39s
+budget 80ms: 475 misses (100.00%), longest streak 475
+stage                  mean      p50      p90      p95      p99    p99.9      max
+---------------------------------------------------------------------------------
+total_ms             101.94   101.58   102.84   103.13   104.08   105.57   106.39
+opus_ms                0.00     0.00     0.00     0.00     0.00     0.00     0.00
+encode_main_ms         2.98     2.98     2.99     3.01     3.06     3.72     3.73
+encode_other_ms        3.01     3.00     3.02     3.03     3.44     3.93     3.93
+step_ms               91.61    91.28    92.53    92.68    93.67    95.17    95.99
+decode_main_ms         2.12     2.11     2.13     2.16     2.45     2.86     2.88
+decode_other_ms        2.12     2.12     2.13     2.14     2.16     2.98     3.07
+d2h_ms                 0.02     0.02     0.02     0.03     0.03     0.05     0.06
