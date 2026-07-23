@@ -39,7 +39,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from ..utils.compile import no_compile
+from ..utils.compile import no_compile, torch_compile_lazy
 from .gating import make_gating
 from .rope import RotaryEmbedding
 from .streaming import StreamingModule, StreamingContainer
@@ -52,6 +52,7 @@ class LayerNormF32(nn.LayerNorm):
         return out_f32.to(input.dtype)
 
 
+@torch_compile_lazy
 def _rms_norm(
     x: torch.Tensor,
     alpha: torch.Tensor,

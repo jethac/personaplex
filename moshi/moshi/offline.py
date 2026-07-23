@@ -171,6 +171,7 @@ def run_inference(
     cpu_offload: bool = False,
     fp8: bool = False,
     w8a16: bool = False,
+    nvfp4_ffn: bool = False,
     dep_q_exit: Optional[int] = None,
 ):
     """Run offline inference using an input WAV as the user-side stream.
@@ -208,6 +209,10 @@ def run_inference(
         moshi_weight = hf_hub_download(hf_repo, loaders.MOSHI_NAME)  # type: ignore
     lm = loaders.get_moshi_lm(moshi_weight, device=device, cpu_offload=cpu_offload)
     lm.eval()
+    if nvfp4_ffn:
+        from .nvfp4_quantize import quantize_model_nvfp4
+        log("info", "applying NVFP4 FFN quantization")
+        quantize_model_nvfp4(lm, scope="ffn")
     if fp8:
         from .fp8_quantize import quantize_model
         log("info", "applying FP8 quantization")
@@ -396,6 +401,8 @@ def main():
                         help="Offload LM model layers to CPU when GPU memory is insufficient. "
                              "Requires 'accelerate' package.")
     parser.add_argument("--seed", type=int, default=-1, help="Seed for reproducibility (-1 disables)")
+    parser.add_argument("--nvfp4-ffn", action="store_true",
+                        help="NVFP4 weight-only quantization of the temporal transformer FFN")
     parser.add_argument("--w8a16", action="store_true",
                         help="Weight-only 8-bit LM quantization (bf16 compute); exclusive with --fp8")
     parser.add_argument("--fp8", action="store_true",
@@ -448,6 +455,7 @@ def main():
             cpu_offload=args.cpu_offload,
             fp8=args.fp8,
             w8a16=args.w8a16,
+            nvfp4_ffn=args.nvfp4_ffn,
             dep_q_exit=args.dep_q_exit if args.dep_q_exit > 0 else None,
         )
 
