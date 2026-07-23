@@ -1,0 +1,14 @@
+config: bf16-personaplex
+frames: 475 summarized (of 500, warm_skip=25)
+cold start: load_mimi_s=6.55s, load_tokenizer_s=0.20s, load_lm_s=138.94s, warmup_s=2.90s, voice_prompt=/home/jethac/.cache/huggingface/hub/models--nvidia--personaplex-7b-v1/snapshots/fdaf4090a61cb315c138a1faee287ffd6c716309/voices/NATM1.pt, prompt_phase_s=8.40s, total_cold_start_s=157.07s
+budget 80ms: 475 misses (100.00%), longest streak 475
+stage                  mean      p50      p90      p95      p99    p99.9      max
+---------------------------------------------------------------------------------
+total_ms             101.91   101.66   102.82   103.01   103.52   103.59   103.61
+opus_ms                0.00     0.00     0.00     0.00     0.00     0.00     0.00
+encode_main_ms         2.99     2.98     2.99     3.00     3.23     3.88     3.95
+encode_other_ms        2.99     2.99     3.00     3.01     3.21     3.74     3.88
+step_ms               91.59    91.35    92.49    92.67    93.17    93.28    93.31
+decode_main_ms         2.12     2.11     2.12     2.13     2.18     2.83     3.02
+decode_other_ms        2.14     2.13     2.14     2.14     2.31     3.01     3.01
+d2h_ms                 0.02     0.02     0.02     0.02     0.02     0.03     0.03

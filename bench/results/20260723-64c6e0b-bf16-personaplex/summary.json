@@ -1,0 +1,95 @@
+{
+  "config": "bf16-personaplex",
+  "frames_total": 500,
+  "frames_summarized": 475,
+  "warm_skip": 25,
+  "cold_start": {
+    "load_mimi_s": 6.549604556988925,
+    "load_tokenizer_s": 0.2034476539993193,
+    "load_lm_s": 138.9380951570056,
+    "warmup_s": 2.8990937470225617,
+    "voice_prompt": "/home/jethac/.cache/huggingface/hub/models--nvidia--personaplex-7b-v1/snapshots/fdaf4090a61cb315c138a1faee287ffd6c716309/voices/NATM1.pt",
+    "prompt_phase_s": 8.399954649008578,
+    "total_cold_start_s": 157.07141423600842
+  },
+  "stages": {
+    "total_ms": {
+      "mean": 101.913,
+      "p50": 101.657,
+      "p90": 102.823,
+      "p95": 103.008,
+      "p99": 103.523,
+      "p99.9": 103.588,
+      "max": 103.61
+    },
+    "opus_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "p99.9": 0.0,
+      "max": 0.0
+    },
+    "encode_main_ms": {
+      "mean": 2.986,
+      "p50": 2.976,
+      "p90": 2.989,
+      "p95": 2.996,
+      "p99": 3.234,
+      "p99.9": 3.876,
+      "max": 3.946
+    },
+    "encode_other_ms": {
+      "mean": 2.994,
+      "p50": 2.986,
+      "p90": 2.999,
+      "p95": 3.008,
+      "p99": 3.21,
+      "p99.9": 3.742,
+      "max": 3.875
+    },
+    "step_ms": {
+      "mean": 91.591,
+      "p50": 91.351,
+      "p90": 92.493,
+      "p95": 92.67,
+      "p99": 93.168,
+      "p99.9": 93.284,
+      "max": 93.313
+    },
+    "decode_main_ms": {
+      "mean": 2.117,
+      "p50": 2.112,
+      "p90": 2.12,
+      "p95": 2.126,
+      "p99": 2.183,
+      "p99.9": 2.832,
+      "max": 3.015
+    },
+    "decode_other_ms": {
+      "mean": 2.136,
+      "p50": 2.128,
+      "p90": 2.136,
+      "p95": 2.142,
+      "p99": 2.307,
+      "p99.9": 3.01,
+      "max": 3.013
+    },
+    "d2h_ms": {
+      "mean": 0.021,
+      "p50": 0.021,
+      "p90": 0.021,
+      "p95": 0.021,
+      "p99": 0.024,
+      "p99.9": 0.028,
+      "max": 0.031
+    }
+  },
+  "budget": {
+    "budget_ms": 80.0,
+    "miss_count": 475,
+    "miss_fraction": 1.0,
+    "longest_miss_streak": 475
+  }
+}

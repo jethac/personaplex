@@ -1,0 +1,96 @@
+{
+  "config": "fp8",
+  "frames_total": 500,
+  "frames_summarized": 475,
+  "warm_skip": 25,
+  "cold_start": {
+    "load_mimi_s": 5.648782434000168,
+    "load_tokenizer_s": 0.20607975299935788,
+    "load_lm_s": 135.9242927840096,
+    "fp8_quantize_s": 0.32883449899964035,
+    "warmup_s": 2.2563303709903266,
+    "voice_prompt": "/home/jethac/.cache/huggingface/hub/models--nvidia--personaplex-7b-v1/snapshots/fdaf4090a61cb315c138a1faee287ffd6c716309/voices/NATM1.pt",
+    "prompt_phase_s": 6.171476420015097,
+    "total_cold_start_s": 150.7239185619983
+  },
+  "stages": {
+    "total_ms": {
+      "mean": 77.772,
+      "p50": 77.607,
+      "p90": 78.379,
+      "p95": 78.459,
+      "p99": 78.861,
+      "p99.9": 79.503,
+      "max": 79.702
+    },
+    "opus_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "p99.9": 0.0,
+      "max": 0.0
+    },
+    "encode_main_ms": {
+      "mean": 2.997,
+      "p50": 2.992,
+      "p90": 3.01,
+      "p95": 3.025,
+      "p99": 3.077,
+      "p99.9": 3.315,
+      "max": 3.46
+    },
+    "encode_other_ms": {
+      "mean": 3.023,
+      "p50": 3.01,
+      "p90": 3.027,
+      "p95": 3.045,
+      "p99": 3.377,
+      "p99.9": 3.945,
+      "max": 4.059
+    },
+    "step_ms": {
+      "mean": 67.344,
+      "p50": 67.205,
+      "p90": 67.936,
+      "p95": 68.033,
+      "p99": 68.371,
+      "p99.9": 68.824,
+      "max": 69.031
+    },
+    "decode_main_ms": {
+      "mean": 2.153,
+      "p50": 2.143,
+      "p90": 2.153,
+      "p95": 2.177,
+      "p99": 2.339,
+      "p99.9": 2.803,
+      "max": 2.817
+    },
+    "decode_other_ms": {
+      "mean": 2.149,
+      "p50": 2.141,
+      "p90": 2.153,
+      "p95": 2.172,
+      "p99": 2.288,
+      "p99.9": 3.033,
+      "max": 3.039
+    },
+    "d2h_ms": {
+      "mean": 0.025,
+      "p50": 0.024,
+      "p90": 0.026,
+      "p95": 0.028,
+      "p99": 0.044,
+      "p99.9": 0.047,
+      "max": 0.047
+    }
+  },
+  "budget": {
+    "budget_ms": 80.0,
+    "miss_count": 0,
+    "miss_fraction": 0.0,
+    "longest_miss_streak": 0
+  }
+}
