@@ -44,13 +44,27 @@ SHAPES = [
 ]
 
 
-def bench(fn, n=100, warmup=25):
-    for _ in range(warmup):
-        fn()
+COLD_WS_BYTES = 512 * 1024 * 1024  # rotate >=512MB so L2 (25MB) stays cold
+
+
+def n_copies(bytes_per_matrix):
+    import math
+    return max(4, min(64, math.ceil(COLD_WS_BYTES / max(bytes_per_matrix, 1))))
+
+
+def bench(fns, n=100, warmup=10):
+    """fns: list of per-copy callables, rotated round-robin so every call
+    streams a weight matrix that is cold in L2 (see README: the v1 lab
+    measured hot-cache bandwidth on matrices smaller than L2)."""
+    if not isinstance(fns, (list, tuple)):
+        fns = [fns]
+    R = len(fns)
+    for i in range(warmup):
+        fns[i % R]()
     torch.cuda.synchronize()
     t0 = time.perf_counter()
-    for _ in range(n):
-        fn()
+    for i in range(n):
+        fns[i % R]()
     torch.cuda.synchronize()
     return (time.perf_counter() - t0) / n
 
@@ -129,26 +143,32 @@ def _gemv_splitk(x_ptr, w_ptr, y_ptr, IN: tl.constexpr, OUT,
     tl.atomic_add(y_ptr + offs_o, acc, mask=mask_o)
 
 
-def run_variant(kind, w8, x, OUT, IN, BO, BI, warps, stages, cm=0, sk=1,
+def run_variant(kind, w8s, x, OUT, IN, BO, BI, warps, stages, cm=0, sk=1,
                 w_tiled=None):
     y = torch.zeros(OUT, device="cuda", dtype=torch.float32)
     if kind == "row":
         grid = (triton.cdiv(OUT, BO),)
-        fn = lambda: _gemv_rowmajor[grid](x, w8, y, IN=IN, OUT=OUT, BO=BO,
-                                          BI=BI, CM=cm, num_warps=warps,
-                                          num_stages=stages)
+        fns = [lambda w=w: _gemv_rowmajor[grid](x, w, y, IN=IN, OUT=OUT,
+                                                BO=BO, BI=BI, CM=cm,
+                                                num_warps=warps,
+                                                num_stages=stages)
+               for w in w8s]
     elif kind == "tiled":
         grid = (triton.cdiv(OUT, BO),)
-        fn = lambda: _gemv_tiled[grid](x, w_tiled, y, IN=IN, OUT=OUT, BO=BO,
-                                       BI=BI, num_warps=warps,
-                                       num_stages=stages)
+        fns = [lambda w=w: _gemv_tiled[grid](x, w, y, IN=IN, OUT=OUT, BO=BO,
+                                             BI=BI, num_warps=warps,
+                                             num_stages=stages)
+               for w in w_tiled]
     elif kind == "splitk":
         grid = (triton.cdiv(OUT, BO), sk)
-        def fn():
-            y.zero_()
-            _gemv_splitk[grid](x, w8, y, IN=IN, OUT=OUT, BO=BO, BI=BI, SK=sk,
-                               num_warps=warps, num_stages=stages)
-    return bench(fn)
+        def mk(w):
+            def fn():
+                y.zero_()
+                _gemv_splitk[grid](x, w, y, IN=IN, OUT=OUT, BO=BO, BI=BI,
+                                   SK=sk, num_warps=warps, num_stages=stages)
+            return fn
+        fns = [mk(w) for w in w8s]
+    return bench(fns)
 
 
 def make_tiled(w8, BO, BI):
@@ -186,35 +206,48 @@ def main():
     sweep_shape = (4096, 12288)
     torch.manual_seed(0)
 
+    import sys
+    sys.path.insert(0, "/home/jethac/work/personaplex/moshi")
+    from moshi.w8a16_quantize import w8a16_linear, _quantize_weight
+
     for IN, OUT in SHAPES:
-        wb = (torch.randn(OUT, IN, device="cuda", dtype=torch.bfloat16) * 0.02)
-        x = torch.randn(1, IN, device="cuda", dtype=torch.bfloat16)
         wbytes_bf16 = OUT * IN * 2
         wbytes_fp8 = OUT * IN
+        R = n_copies(wbytes_fp8)
+        Rb = n_copies(wbytes_bf16)
+        print(f"# shape {IN}x{OUT}: {R} fp8 copies ({R*wbytes_fp8/1e9:.2f} GB), "
+              f"{Rb} bf16 copies ({Rb*wbytes_bf16/1e9:.2f} GB)")
+        x = torch.randn(1, IN, device="cuda", dtype=torch.bfloat16)
+        wbs = [(torch.randn(OUT, IN, device="cuda", dtype=torch.bfloat16) * 0.02)
+               for _ in range(Rb)]
+        w8s, wss = [], []
+        for i in range(R):
+            wb_i = wbs[i % Rb]
+            amax = wb_i.abs().amax()
+            ws_i = (amax / 448.0).clamp(min=1e-12).float().view(1)
+            w8s.append((wb_i / ws_i).to(torch.float8_e4m3fn))
+            wss.append(ws_i)
 
-        # references
-        sec = bench(lambda: F.linear(x, wb))
+        # references (same cold-rotation methodology)
+        sec = bench([lambda wb=wb: F.linear(x, wb) for wb in wbs])
         record((IN, OUT), "cublas-bf16", sec, wbytes_bf16)
 
-        amax = wb.abs().amax()
-        ws = (amax / 448.0).clamp(min=1e-12).float().view(1)
-        w8 = (wb / ws).to(torch.float8_e4m3fn)
         xs = torch.ones(1, device="cuda")
         x8 = x.to(torch.float8_e4m3fn)
         try:
-            sec = bench(lambda: torch._scaled_mm(x8, w8.t(), scale_a=xs,
-                                                 scale_b=ws,
-                                                 out_dtype=torch.bfloat16))
+            sec = bench([lambda w8=w8, ws=ws: torch._scaled_mm(
+                x8, w8.t(), scale_a=xs, scale_b=ws, out_dtype=torch.bfloat16)
+                for w8, ws in zip(w8s, wss)])
             record((IN, OUT), "torch._scaled_mm-fp8", sec, wbytes_fp8)
         except Exception as e:
             print(f"  _scaled_mm failed: {str(e)[:80]}")
 
-        import sys
-        sys.path.insert(0, "/home/jethac/work/personaplex/moshi")
-        from moshi.w8a16_quantize import w8a16_linear, _quantize_weight
-        wq, sq = _quantize_weight(wb)
-        sec = bench(lambda: w8a16_linear(x.view(1, 1, IN), wq, sq))
+        wqs = [_quantize_weight(wbs[i % Rb]) for i in range(R)]
+        sec = bench([lambda wq=wq, sq=sq: w8a16_linear(x.view(1, 1, IN), wq, sq)
+                     for wq, sq in wqs])
         record((IN, OUT), "shipped-w8a16-triton", sec, wbytes_fp8)
+        wb = wbs[0]
+        w8 = None  # variants below rotate over w8s
 
         # sweep (full grid only on the sweep shape; elsewhere winners only)
         combos = (itertools.product(BOs, BIs, WPs, STs)
@@ -224,7 +257,7 @@ def main():
         for BO, BI, WP, ST in combos:
             for cm, cmname in ((0, ""), (1, ".cg")):
                 try:
-                    sec = run_variant("row", w8, x.view(-1), OUT, IN, BO, BI,
+                    sec = run_variant("row", w8s, x.view(-1), OUT, IN, BO, BI,
                                       WP, ST, cm=cm)
                 except Exception:
                     continue
@@ -238,24 +271,25 @@ def main():
 
         # tiled arena + split-K at representative configs
         for BO, BI in [(16, 512), (32, 1024)]:
-            wt = make_tiled(w8, BO, BI)
             try:
-                sec = run_variant("tiled", w8, x.view(-1), OUT, IN, BO, BI,
-                                  2, 3, w_tiled=wt)
+                wts = [make_tiled(w, BO, BI) for w in w8s]
+                sec = run_variant("tiled", w8s, x.view(-1), OUT, IN, BO, BI,
+                                  2, 3, w_tiled=wts)
                 record((IN, OUT), f"tiled-arena BO{BO} BI{BI} w2 s3", sec,
                        wbytes_fp8)
+                del wts
+                torch.cuda.empty_cache()
             except Exception as e:
                 print(f"  tiled failed: {str(e)[:80]}")
-            del wt
         for sk in (2, 4):
             try:
-                sec = run_variant("splitk", w8, x.view(-1), OUT, IN, 16, 512,
+                sec = run_variant("splitk", w8s, x.view(-1), OUT, IN, 16, 512,
                                   2, 3, sk=sk)
                 record((IN, OUT), f"splitk{sk} BO16 BI512 w2 s3", sec,
                        wbytes_fp8)
             except Exception as e:
                 print(f"  splitk failed: {str(e)[:80]}")
-        del wb, w8, wq
+        del wbs, w8s, wqs
         torch.cuda.empty_cache()
 
     if args.out:

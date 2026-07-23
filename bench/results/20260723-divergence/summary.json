@@ -1,0 +1,280 @@
+[
+  {
+    "seed": 42424,
+    "frames": 5000,
+    "models": {
+      "fp8": {
+        "first_divergence_frame": 3,
+        "divergence_channels": [
+          1,
+          3,
+          7,
+          8
+        ],
+        "pre_divergence_frames": 2,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 226.79829999999998,
+        "delta_last10_audio_l2_mean": 226.79829999999998,
+        "health": {
+          "rms_mean": 0.001076986286716856,
+          "silence_frac": 0.9799919967987195,
+          "longest_silence_run_frames": 2963,
+          "click_p99": 0.0029032529331743566,
+          "click_max": 0.07059831917285919,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 30.273956107794938,
+          "flatness_mean": 0.00036109940694496246
+        }
+      },
+      "w8a16": {
+        "first_divergence_frame": 2,
+        "divergence_channels": [
+          3,
+          6,
+          7,
+          8
+        ],
+        "pre_divergence_frames": 1,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 279.788,
+        "delta_last10_audio_l2_mean": 279.788,
+        "health": {
+          "rms_mean": 0.0006216757862521958,
+          "silence_frac": 0.9891956782713085,
+          "longest_silence_run_frames": 2973,
+          "click_p99": 4.964114399625949e-05,
+          "click_max": 0.03506920859217644,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 13.474343203943679,
+          "flatness_mean": 7.728870153170333e-05
+        }
+      }
+    }
+  },
+  {
+    "seed": 1001,
+    "frames": 5000,
+    "models": {
+      "fp8": {
+        "first_divergence_frame": 2,
+        "divergence_channels": [
+          3,
+          5,
+          7,
+          8
+        ],
+        "pre_divergence_frames": 1,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 254.3378,
+        "delta_last10_audio_l2_mean": 254.3378,
+        "health": {
+          "rms_mean": 0.0023583248333337264,
+          "silence_frac": 0.9279711884753902,
+          "longest_silence_run_frames": 2780,
+          "click_p99": 0.006826149607077234,
+          "click_max": 0.07331043481826782,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 80.49803659872958,
+          "flatness_mean": 0.0004790932311595707
+        }
+      },
+      "w8a16": {
+        "first_divergence_frame": 2,
+        "divergence_channels": [
+          3,
+          7,
+          8
+        ],
+        "pre_divergence_frames": 1,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 241.5483,
+        "delta_last10_audio_l2_mean": 241.5483,
+        "health": {
+          "rms_mean": 0.0021209938754140093,
+          "silence_frac": 0.9483793517406963,
+          "longest_silence_run_frames": 2045,
+          "click_p99": 0.005692616524174809,
+          "click_max": 0.09114036709070206,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 59.17715505417887,
+          "flatness_mean": 0.0006130951305540713
+        }
+      }
+    }
+  },
+  {
+    "seed": 2002,
+    "frames": 5000,
+    "models": {
+      "fp8": {
+        "first_divergence_frame": 3,
+        "divergence_channels": [
+          1,
+          3,
+          5,
+          6,
+          7,
+          8
+        ],
+        "pre_divergence_frames": 2,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 206.85989999999998,
+        "delta_last10_audio_l2_mean": 206.85989999999998,
+        "health": {
+          "rms_mean": 0.0017230652308763692,
+          "silence_frac": 0.9663865546218487,
+          "longest_silence_run_frames": 2924,
+          "click_p99": 0.004406765252351669,
+          "click_max": 0.08571110665798187,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 40.82623016750776,
+          "flatness_mean": 0.0003913979362198143
+        }
+      },
+      "w8a16": {
+        "first_divergence_frame": 2,
+        "divergence_channels": [
+          3,
+          7,
+          8
+        ],
+        "pre_divergence_frames": 1,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 266.6076,
+        "delta_last10_audio_l2_mean": 266.6076,
+        "health": {
+          "rms_mean": 0.0031176193635580464,
+          "silence_frac": 0.9351740696278511,
+          "longest_silence_run_frames": 2971,
+          "click_p99": 0.004854397717863291,
+          "click_max": 0.12508352100849152,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 38.585176191190826,
+          "flatness_mean": 0.00030723560164612435
+        }
+      }
+    }
+  },
+  {
+    "seed": 3003,
+    "frames": 5000,
+    "models": {
+      "fp8": {
+        "first_divergence_frame": 2,
+        "divergence_channels": [
+          8
+        ],
+        "pre_divergence_frames": 1,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 139.8085,
+        "delta_last10_audio_l2_mean": 139.8085,
+        "health": {
+          "rms_mean": 0.001425862090002761,
+          "silence_frac": 0.9727891156462585,
+          "longest_silence_run_frames": 1926,
+          "click_p99": 0.004542788546532377,
+          "click_max": 0.05672318488359451,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 27.121095671241118,
+          "flatness_mean": 0.00021164981909103199
+        }
+      },
+      "w8a16": {
+        "first_divergence_frame": 2,
+        "divergence_channels": [
+          3,
+          6,
+          7,
+          8
+        ],
+        "pre_divergence_frames": 1,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 279.788,
+        "delta_last10_audio_l2_mean": 279.788,
+        "health": {
+          "rms_mean": 0.0069152973886027385,
+          "silence_frac": 0.8239295718287315,
+          "longest_silence_run_frames": 1270,
+          "click_p99": 0.014285720614716379,
+          "click_max": 0.06053771823644638,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 131.13659169242064,
+          "flatness_mean": 0.000581075665336692
+        }
+      }
+    }
+  },
+  {
+    "seed": 4004,
+    "frames": 5000,
+    "models": {
+      "fp8": {
+        "first_divergence_frame": 2,
+        "divergence_channels": [
+          3,
+          5,
+          6,
+          7,
+          8
+        ],
+        "pre_divergence_frames": 1,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 292.0015,
+        "delta_last10_audio_l2_mean": 292.0015,
+        "health": {
+          "rms_mean": 0.006115776862135973,
+          "silence_frac": 0.8387354941976791,
+          "longest_silence_run_frames": 1688,
+          "click_p99": 0.014458706639707051,
+          "click_max": 0.04675871878862381,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 162.35422032211565,
+          "flatness_mean": 0.0014549428356852427
+        }
+      },
+      "w8a16": {
+        "first_divergence_frame": 2,
+        "divergence_channels": [
+          3,
+          6,
+          7,
+          8
+        ],
+        "pre_divergence_frames": 1,
+        "drift_exponent_audio_l2": null,
+        "drift_exponent_text_l2": null,
+        "drift_points": null,
+        "delta_first10_audio_l2_mean": 259.7991,
+        "delta_last10_audio_l2_mean": 259.7991,
+        "health": {
+          "rms_mean": 0.005744254849455278,
+          "silence_frac": 0.8467386954781913,
+          "longest_silence_run_frames": 2702,
+          "click_p99": 0.013285311069339509,
+          "click_max": 0.06709863990545273,
+          "clicks_over_thresh": 0,
+          "centroid_hz_mean": 147.73772935489842,
+          "flatness_mean": 0.0012359464343483868
+        }
+      }
+    }
+  }
+]

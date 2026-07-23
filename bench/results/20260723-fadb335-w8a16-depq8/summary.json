@@ -1,0 +1,96 @@
+{
+  "config": "w8a16-depq8",
+  "frames_total": 500,
+  "frames_summarized": 475,
+  "warm_skip": 25,
+  "cold_start": {
+    "load_mimi_s": 5.978332180995494,
+    "load_tokenizer_s": 0.20109593600500375,
+    "load_lm_s": 137.20280296099372,
+    "w8a16_quantize_s": 0.8029845849960111,
+    "warmup_s": 2.092580449010711,
+    "voice_prompt": "/home/jethac/.cache/huggingface/hub/models--nvidia--personaplex-7b-v1/snapshots/fdaf4090a61cb315c138a1faee287ffd6c716309/voices/NATM1.pt",
+    "prompt_phase_s": 4.081823432992678,
+    "total_cold_start_s": 150.42975235398626
+  },
+  "stages": {
+    "total_ms": {
+      "mean": 53.964,
+      "p50": 53.822,
+      "p90": 54.661,
+      "p95": 54.764,
+      "p99": 54.909,
+      "p99.9": 55.342,
+      "max": 55.444
+    },
+    "opus_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "p99.9": 0.0,
+      "max": 0.0
+    },
+    "encode_main_ms": {
+      "mean": 2.983,
+      "p50": 2.97,
+      "p90": 2.982,
+      "p95": 2.994,
+      "p99": 3.508,
+      "p99.9": 3.949,
+      "max": 3.961
+    },
+    "encode_other_ms": {
+      "mean": 2.957,
+      "p50": 2.946,
+      "p90": 2.958,
+      "p95": 2.965,
+      "p99": 3.435,
+      "p99.9": 3.85,
+      "max": 3.941
+    },
+    "step_ms": {
+      "mean": 43.694,
+      "p50": 43.585,
+      "p90": 44.16,
+      "p95": 44.483,
+      "p99": 44.62,
+      "p99.9": 44.709,
+      "max": 44.723
+    },
+    "decode_main_ms": {
+      "mean": 2.11,
+      "p50": 2.102,
+      "p90": 2.11,
+      "p95": 2.116,
+      "p99": 2.512,
+      "p99.9": 2.888,
+      "max": 3.051
+    },
+    "decode_other_ms": {
+      "mean": 2.131,
+      "p50": 2.122,
+      "p90": 2.131,
+      "p95": 2.139,
+      "p99": 2.575,
+      "p99.9": 3.065,
+      "max": 3.093
+    },
+    "d2h_ms": {
+      "mean": 0.021,
+      "p50": 0.021,
+      "p90": 0.021,
+      "p95": 0.021,
+      "p99": 0.023,
+      "p99.9": 0.024,
+      "max": 0.025
+    }
+  },
+  "budget": {
+    "budget_ms": 80.0,
+    "miss_count": 0,
+    "miss_fraction": 0.0,
+    "longest_miss_streak": 0
+  }
+}
