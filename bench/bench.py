@@ -326,6 +326,13 @@ def load_models(args, cold: dict):
     cold["load_lm_s"] = time.perf_counter() - t0
     log(f"moshi LM loaded in {cold['load_lm_s']:.1f}s")
 
+    if args.fp8:
+        from moshi.fp8_quantize import quantize_model
+        t0 = time.perf_counter()
+        quantize_model(lm)
+        cold["fp8_quantize_s"] = time.perf_counter() - t0
+        log(f"FP8 quantization done in {cold['fp8_quantize_s']:.1f}s")
+
     frame_size = int(mimi.sample_rate / mimi.frame_rate)
     lm_gen = LMGen(
         lm,
@@ -339,6 +346,7 @@ def load_models(args, cold: dict):
         temp_text=args.temp_text,
         top_k=args.topk_audio,
         top_k_text=args.topk_text,
+        depformer_early_exit=args.dep_q_exit if args.dep_q_exit > 0 else None,
     )
     mimi.streaming_forever(1)
     other_mimi.streaming_forever(1)
@@ -369,6 +377,10 @@ def load_models(args, cold: dict):
         torch.cuda.synchronize()
     cold["warmup_s"] = time.perf_counter() - t0
     log(f"warmup done in {cold['warmup_s']:.2f}s")
+
+    if args.fp8:
+        from moshi.fp8_quantize import free_bf16_inproj
+        free_bf16_inproj(lm)
 
     # prompt phase (cold start; excluded from sustained loop)
     t0 = time.perf_counter()
@@ -636,6 +648,11 @@ def main():
     p.add_argument("--topk-audio", type=int, default=250)
     p.add_argument("--topk-text", type=int, default=25)
     p.add_argument("--greedy", action="store_true")
+    p.add_argument("--fp8", action="store_true",
+                   help="quantize LM linears to FP8 (torch._scaled_mm path)")
+    p.add_argument("--dep-q-exit", type=int, default=0,
+                   help="stop the depformer after N steps (>=8; codebooks "
+                        "beyond N are provided-side and unused in serve flow)")
     p.add_argument("--device", type=str, default="cuda")
     args = p.parse_args()
 
