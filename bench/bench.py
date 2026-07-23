@@ -332,6 +332,12 @@ def load_models(args, cold: dict):
     cold["load_lm_s"] = time.perf_counter() - t0
     log(f"moshi LM loaded in {cold['load_lm_s']:.1f}s")
 
+    if args.nvfp4_ffn:
+        from moshi.nvfp4_quantize import quantize_model_nvfp4
+        t0 = time.perf_counter()
+        quantize_model_nvfp4(lm, scope="ffn")
+        cold["nvfp4_quantize_s"] = time.perf_counter() - t0
+        log(f"NVFP4 FFN quantization done in {cold['nvfp4_quantize_s']:.1f}s")
     if args.fp8:
         from moshi.fp8_quantize import quantize_model
         t0 = time.perf_counter()
@@ -671,6 +677,13 @@ def main():
     p.add_argument("--greedy", action="store_true")
     p.add_argument("--fp8", action="store_true",
                    help="quantize LM linears to FP8 (torch._scaled_mm path)")
+    p.add_argument("--fast", action="store_true",
+                   help="preset: enable the current best latency stack "
+                        "(w8a16 + dep-q-exit 8 + skip-other-mimi + mimi-fp16)")
+    p.add_argument("--nvfp4-ffn", action="store_true",
+                   help="NVFP4 weight-only quantization of the temporal "
+                        "transformer FFN (applied before --fp8; combine "
+                        "with --fp8 for the mixed-precision config)")
     p.add_argument("--w8a16", action="store_true",
                    help="weight-only 8-bit: fp8-stored weights dequantized "
                         "in a Triton GEMV, all compute bf16 (activations "
@@ -690,6 +703,14 @@ def main():
     p.add_argument("--device", type=str, default="cuda")
     args = p.parse_args()
 
+    if args.fast:
+        # --fast: current best stack (see bench/results/ABLATIONS.md).
+        args.w8a16 = True
+        args.dep_q_exit = args.dep_q_exit or 8
+        args.skip_other_mimi = True
+        args.mimi_fp16 = True
+        if args.config_label == "bf16-stock":
+            args.config_label = "fast"
     if args.fp8 and args.w8a16:
         p.error("--fp8 and --w8a16 are mutually exclusive")
     if args.smoke and args.device == "cuda" and not torch.cuda.is_available():

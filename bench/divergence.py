@@ -332,6 +332,14 @@ def main():
             quantize_model(lm_q)
         elif scheme == "w8a16":
             quantize_model_w8a16(lm_q)
+        elif scheme == "nvfp4ffn-fp8":
+            from moshi.nvfp4_quantize import quantize_model_nvfp4
+            quantize_model_nvfp4(lm_q, scope="ffn")
+            quantize_model(lm_q)
+        elif scheme == "nvfp4ffn-w8a16":
+            from moshi.nvfp4_quantize import quantize_model_nvfp4
+            quantize_model_nvfp4(lm_q, scope="ffn")
+            quantize_model_w8a16(lm_q)
         else:
             raise ValueError(f"unknown scheme {scheme}")
         quant_lms.append((scheme, lm_q))

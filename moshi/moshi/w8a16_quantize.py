@@ -238,6 +238,8 @@ def quantize_model_w8a16(model, min_features=512):
         if isinstance(module, nn.Linear):
             if module.in_features < min_features and module.out_features < min_features:
                 continue
+            if getattr(module, "_is_nvfp4", False):
+                continue  # already NVFP4 (mixed-precision setup)
             if module.weight.ndim > 2:
                 continue
             if "depformer" in name and "self_attn" in name:

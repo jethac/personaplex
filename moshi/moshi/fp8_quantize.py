@@ -185,6 +185,9 @@ def quantize_model(model, min_features=512):
         if isinstance(module, nn.Linear):
             if module.in_features < min_features and module.out_features < min_features:
                 continue
+            if getattr(module, "_is_nvfp4", False):
+                # already quantized to NVFP4 (mixed-precision setup)
+                continue
             if module.weight.ndim > 2:
                 continue
             # Skip depformer self_attn — per-step slices too small for FP8 benefit
