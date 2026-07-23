@@ -309,7 +309,13 @@ def load_models(args, cold: dict):
     t0 = time.perf_counter()
     mimi_weight = args.mimi_weight or hf_hub_download(args.hf_repo, loaders.MIMI_NAME)
     mimi = loaders.get_mimi(mimi_weight, args.device)
-    other_mimi = loaders.get_mimi(mimi_weight, args.device)
+    other_mimi = None if args.skip_other_mimi else loaders.get_mimi(mimi_weight, args.device)
+    if args.mimi_fp16:
+        mimi = mimi.half()
+        mimi.torch_compile_encoder_decoder = True  # unlocks torch_compile_lazy
+        if other_mimi is not None:
+            other_mimi = other_mimi.half()
+            other_mimi.torch_compile_encoder_decoder = True
     cold["load_mimi_s"] = time.perf_counter() - t0
     log(f"mimi loaded in {cold['load_mimi_s']:.1f}s")
 
@@ -349,7 +355,8 @@ def load_models(args, cold: dict):
         depformer_early_exit=args.dep_q_exit if args.dep_q_exit > 0 else None,
     )
     mimi.streaming_forever(1)
-    other_mimi.streaming_forever(1)
+    if other_mimi is not None:
+        other_mimi.streaming_forever(1)
     lm_gen.streaming_forever(1)
 
     # NVTX on LMGen sub-stages so nsys traces split forward/depformer/sampling
@@ -363,16 +370,19 @@ def load_models(args, cold: dict):
     # warmup, identical to server.py / offline.py
     t0 = time.perf_counter()
     with torch.no_grad():
+        wdtype = torch.float16 if args.mimi_fp16 else torch.float32
         for _ in range(4):
-            chunk = torch.zeros(1, 1, frame_size, dtype=torch.float32, device=args.device)
+            chunk = torch.zeros(1, 1, frame_size, dtype=wdtype, device=args.device)
             codes = mimi.encode(chunk)
-            _ = other_mimi.encode(chunk)
+            if other_mimi is not None:
+                _ = other_mimi.encode(chunk)
             for c in range(codes.shape[-1]):
                 tokens = lm_gen.step(codes[:, :, c: c + 1])
                 if tokens is None:
                     continue
                 _ = mimi.decode(tokens[:, 1:9])
-                _ = other_mimi.decode(tokens[:, 1:9])
+                if other_mimi is not None:
+                    _ = other_mimi.decode(tokens[:, 1:9])
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     cold["warmup_s"] = time.perf_counter() - t0
@@ -398,7 +408,8 @@ def load_models(args, cold: dict):
                 lm_gen.text_prompt_tokens = text_tokenizer.encode(
                     f"<system> {args.text_prompt.strip()} <system>")
                 mimi.reset_streaming()
-                other_mimi.reset_streaming()
+                if other_mimi is not None:
+                    other_mimi.reset_streaming()
                 lm_gen.reset_streaming()
                 lm_gen.step_system_prompts(mimi)
                 mimi.reset_streaming()
@@ -483,6 +494,8 @@ def run_loop(args, mimi, other_mimi, lm_gen, frame_size, out_dir: Path):
             t_frame0 = timer._now()
 
             chunk = feeder.next_frame()
+            if args.mimi_fp16:
+                chunk = chunk.half()
 
             if opus_writer is not None:
                 # Simulates the server's opus input path cost. The opus stream
@@ -497,8 +510,9 @@ def run_loop(args, mimi, other_mimi, lm_gen, frame_size, out_dir: Path):
 
             with timer.stage("encode_main_ms"):
                 codes = mimi.encode(chunk)
-            with timer.stage("encode_other_ms"):
-                _ = other_mimi.encode(chunk)
+            if other_mimi is not None:
+                with timer.stage("encode_other_ms"):
+                    _ = other_mimi.encode(chunk)
 
             tokens = None
             with timer.stage("step_ms"):
@@ -508,8 +522,9 @@ def run_loop(args, mimi, other_mimi, lm_gen, frame_size, out_dir: Path):
             if tokens is not None:
                 with timer.stage("decode_main_ms"):
                     pcm = mimi.decode(tokens[:, 1:9])
-                with timer.stage("decode_other_ms"):
-                    _ = other_mimi.decode(tokens[:, 1:9])
+                if other_mimi is not None:
+                    with timer.stage("decode_other_ms"):
+                        _ = other_mimi.decode(tokens[:, 1:9])
                 with timer.stage("d2h_ms"):
                     _ = pcm.detach().cpu().numpy()
 
@@ -650,6 +665,15 @@ def main():
     p.add_argument("--greedy", action="store_true")
     p.add_argument("--fp8", action="store_true",
                    help="quantize LM linears to FP8 (torch._scaled_mm path)")
+    p.add_argument("--mimi-fp16", action="store_true",
+                   help="run both mimi instances in fp16 and enable their "
+                        "torch.compile path (amarrmb recipe)")
+    p.add_argument("--skip-other-mimi", action="store_true",
+                   help="skip the second mimi stream. Safe for latency work: "
+                        "every other_mimi.encode/decode result in server.py "
+                        "is assigned to _ and discarded (lines 123/129/225/"
+                        "232 at commit 3428dfd), and its streaming state "
+                        "feeds nothing else")
     p.add_argument("--dep-q-exit", type=int, default=0,
                    help="stop the depformer after N steps (>=8; codebooks "
                         "beyond N are provided-side and unused in serve flow)")
