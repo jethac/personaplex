@@ -452,10 +452,20 @@ def run_loop(args, mimi, other_mimi, lm_gen, frame_size, out_dir: Path):
 
     t_start = time.perf_counter()
     frame_idx = 0
+    profiling = False
     with torch.no_grad():
         while frame_idx < max_frames:
             if deadline is not None and time.perf_counter() >= deadline:
                 break
+            if args.profile_frames > 0:
+                if frame_idx == args.warm_skip:
+                    torch.cuda.cudart().cudaProfilerStart()
+                    profiling = True
+                    log(f"cudaProfilerStart at frame {frame_idx}")
+                elif profiling and frame_idx == args.warm_skip + args.profile_frames:
+                    torch.cuda.cudart().cudaProfilerStop()
+                    profiling = False
+                    log(f"cudaProfilerStop at frame {frame_idx}")
             timer = StageTimer(sync=not args.no_stage_sync)
             nvtx_push(f"frame_{frame_idx}")
             t_frame0 = timer._now()
@@ -605,6 +615,9 @@ def main():
                    help="only sync at frame boundaries (see protocol.md #5 caveat)")
     p.add_argument("--opus", action="store_true",
                    help="include sphn opus round-trip of the input frame")
+    p.add_argument("--profile-frames", type=int, default=0,
+                   help="bracket N warm frames with cudaProfilerStart/Stop "
+                        "(for nsys --capture-range=cudaProfilerApi)")
     p.add_argument("--no-dmon", action="store_true",
                    help="skip the nvidia-smi dmon side capture")
     p.add_argument("--smoke", action="store_true",
