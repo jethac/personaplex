@@ -64,14 +64,22 @@ def _make_gating_forward():
     def gating_forward_fp8(self, x):
         lin_in = self.linear_in
         lin_out = self.linear_out
-        if getattr(lin_in, '_is_fp8', False):
+        if getattr(lin_in, '_is_nvfp4', False):
+            from .nvfp4_quantize import nvfp4_linear
+            x = nvfp4_linear(x, lin_in.weight, lin_in.nvfp4_block_scales,
+                             lin_in.nvfp4_scale2, lin_in.nvfp4_in_features)
+        elif getattr(lin_in, '_is_fp8', False):
             x = fp8_linear(x, lin_in.weight, lin_in.weight_scale)
         else:
             x = F.linear(x, lin_in.weight)
         B, T, _ = x.shape
         x = x.view(B, T, 2, -1)
         x = self.activation(x[..., 0, :]) * x[..., 1, :]
-        if getattr(lin_out, '_is_fp8', False):
+        if getattr(lin_out, '_is_nvfp4', False):
+            from .nvfp4_quantize import nvfp4_linear
+            x = nvfp4_linear(x, lin_out.weight, lin_out.nvfp4_block_scales,
+                             lin_out.nvfp4_scale2, lin_out.nvfp4_in_features)
+        elif getattr(lin_out, '_is_fp8', False):
             x = fp8_linear(x, lin_out.weight, lin_out.weight_scale)
         else:
             x = F.linear(x, lin_out.weight)

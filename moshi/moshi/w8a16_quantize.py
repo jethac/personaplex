@@ -109,24 +109,26 @@ def _w8a16_forward(self, x):
 def _make_gating_forward():
     from .fp8_quantize import fp8_linear
 
+    def _apply(lin, x):
+        # Full per-instance dispatch: this class-level patch may be installed
+        # LAST in mixed-precision setups (nvfp4 -> w8a16/fp8 ordering), so it
+        # must recognize every scheme's markers.
+        if getattr(lin, "_is_nvfp4", False):
+            from .nvfp4_quantize import nvfp4_linear
+            return nvfp4_linear(x, lin.weight, lin.nvfp4_block_scales,
+                                lin.nvfp4_scale2, lin.nvfp4_in_features)
+        if getattr(lin, "_is_w8a16", False):
+            return w8a16_linear(x, lin.weight, lin.w8a16_scale)
+        if getattr(lin, "_is_fp8", False):
+            return fp8_linear(x, lin.weight, lin.weight_scale)
+        return F.linear(x, lin.weight)
+
     def gating_forward(self, x):
-        lin_in, lin_out = self.linear_in, self.linear_out
-        if getattr(lin_in, "_is_w8a16", False):
-            x = w8a16_linear(x, lin_in.weight, lin_in.w8a16_scale)
-        elif getattr(lin_in, "_is_fp8", False):
-            x = fp8_linear(x, lin_in.weight, lin_in.weight_scale)
-        else:
-            x = F.linear(x, lin_in.weight)
+        x = _apply(self.linear_in, x)
         B, T, _ = x.shape
         x = x.view(B, T, 2, -1)
         x = self.activation(x[..., 0, :]) * x[..., 1, :]
-        if getattr(lin_out, "_is_w8a16", False):
-            x = w8a16_linear(x, lin_out.weight, lin_out.w8a16_scale)
-        elif getattr(lin_out, "_is_fp8", False):
-            x = fp8_linear(x, lin_out.weight, lin_out.weight_scale)
-        else:
-            x = F.linear(x, lin_out.weight)
-        return x
+        return _apply(self.linear_out, x)
 
     return gating_forward
 
