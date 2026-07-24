@@ -53,3 +53,19 @@ reference band — and paired WAVs).
 sm_121, n=1. If a future feature reads the second stream (e.g. echo
 monitoring), the flag must stay off — hence opt-in. fp16 mimi on sm80/90
 untested here.
+
+## Attribution
+- The encode_from_sphn dtype cast is @amarrmb's commit add7726,
+  cherry-picked with authorship preserved (git -x provenance).
+- skip-other-mimi and fp16-mimi were identified and first implemented in
+  the amarrmb fork's server path (commit 94cbbbd); this PR adapts them
+  as opt-in offline.py flags with None-safe plumbing — hence the
+  Co-authored-by trailer on the flags commit.
+- @amarrmb: please flag any attribution adjustment you'd like.
+
+## Gating note
+The --mimi-fp16 half of this PR is gated on the v2 multi-seed listening
+matrix (bench/results/20260724-audio-v2/ in the fork): fp16 mimi changes
+codec numerics, and while health metrics sit in the bf16 reference band,
+the perceptual sign-off is pending. --skip-other-mimi is invariant and
+not gated.

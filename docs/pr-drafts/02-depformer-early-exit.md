@@ -52,3 +52,9 @@ skipped values are overwritten by provided tokens before any use).
 sm_121, n=1. Batch>1 serving and `report_loss` training flows untested
 with the flag (guarded off). Anyone feeding step() without user codes gets
 a hard error by design.
+
+## Attribution
+- The observation that dep_q=16 runs 16 sequential depformer steps while
+  the serve path uses 8 codebooks was raised in the GB10 thread
+  (NVIDIA/personaplex#3, @gplv2). The invariance analysis, LMGen
+  implementation, guards and measurements here are ours (jethac).

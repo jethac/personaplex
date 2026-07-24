@@ -57,3 +57,30 @@ sm_121, n=1. Kernel block configs tuned on GB10 only (two shape-class
 configs; may need retune elsewhere). Task-level metrics (WER etc.) not
 measured — numeric drift and signal health only. Uncalibrated per-channel
 absmax scaling.
+
+## Attribution
+- `moshi/moshi/fp8_quantize.py` and the server-path optimizations in this
+  branch are @amarrmb's commit 94cbbbd, cherry-picked with authorship
+  preserved (git -x provenance). Their fork pioneered quantized
+  PersonaPlex on GB10-class hardware (74ms on DGX Spark) and this work
+  builds directly on it.
+- `w8a16_quantize.py` (weight-only scheme + Triton GEMV), the
+  measurements, the drift/health quality gates, and the --fast preset
+  are ours (jethac). The --fp8 offline wiring adapts their server-side
+  flag — Co-authored-by trailer on that commit.
+- Triton-on-sm121 ptxas workaround documented per @amarrmb's README and
+  @listerheaton's notes in the GB10 thread (NVIDIA/personaplex#3).
+- @amarrmb: please flag any attribution adjustment you'd like.
+
+## Gating note
+Merging default-scheme guidance is gated on (a) the v2 multi-seed
+listening matrix (bench/results/20260724-audio-v2/) and (b) the
+maintainers' preference for a default. The objective evidence (drift
+flat, health in reference band, 2.2x latency) is complete; perceptual
+sign-off pending.
+
+## Note on server.py changes in this branch
+The cherry-picked server.py optimizations (fp8 flag, skip-other,
+pinned-memory DtoH, frame profiling) are amarrmb's, validated by them
+on DGX Spark and Jetson Thor; our own validation covers the offline/
+bench path on ThinkStation PGX (sm_121, n=1 each).

@@ -43,3 +43,13 @@ Tier 0 (build/load correctness; no numerics).
 sm_121, n=1 machine. The relaxed pin is unbounded above; maintainers may
 prefer `< 3.0`. Not tested on sm_80/sm_90 (no hardware); the loader change
 is inert when checkpoints are complete.
+
+## Attribution
+- torch-pin relax: first shipped in @amarrmb's fork (commit 94cbbbd,
+  github.com/amarrmb/personaplex); the pin conflict was reported in the
+  GB10 discussion thread (NVIDIA/personaplex#3, @acatovic). This PR
+  carries the same one-line change with a Co-authored-by trailer.
+- meta-tensor zero-init fix: authored here (jethac), interacting with
+  upstream PR #18's meta-device init.
+- @amarrmb: please flag any attribution adjustment you'd like — happy to
+  amend.

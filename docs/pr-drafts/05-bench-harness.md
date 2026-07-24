@@ -36,3 +36,10 @@ vs wall total, bf16 self-tests, proxy-vs-real-weight agreement within
 As PR1. Tier: tooling only (no model-code changes). sm_121, n=1 — the
 playbook explicitly invites other GB10 owners to submit env.json+summary
 traces to widen n.
+
+## Attribution
+Harness, protocol, divergence gates, micro-lab and playbook authored
+here (jethac). The playbook's Triton ptxas workaround follows
+@amarrmb's fork README and @listerheaton's GB10-thread notes
+(NVIDIA/personaplex#3); setup pitfalls cross-checked against amarrmb
+commits b8d7db1/67e3203.
