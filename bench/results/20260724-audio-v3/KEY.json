@@ -1,0 +1,72 @@
+{
+  "pair1-a.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp32",
+    "scheme": "fast",
+    "seed": 42424,
+    "md5": "1e1abf2ae5f6d531886fd0b27fe4e549",
+    "generated": "2026-07-24T12:53:30+0900"
+  },
+  "pair1-b.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp16(+compile)",
+    "scheme": "fastmimifp16",
+    "seed": 42424,
+    "md5": "dff7bef9ecd9c3c5b5592c6c552f575d",
+    "generated": "2026-07-24T12:57:14+0900"
+  },
+  "pair2-a.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp32",
+    "scheme": "fast",
+    "seed": 1001,
+    "md5": "53d4b561370b679d5943d49d9d86d86c",
+    "generated": "2026-07-24T12:53:52+0900"
+  },
+  "pair2-b.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp16(+compile)",
+    "scheme": "fastmimifp16",
+    "seed": 1001,
+    "md5": "8afe05f92d02ae7f0fd17c0b6d6d717e",
+    "generated": "2026-07-24T12:57:35+0900"
+  },
+  "pair3-a.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp32",
+    "scheme": "fast",
+    "seed": 2002,
+    "md5": "e95dd9505229811c2fefb215f27c638a",
+    "generated": "2026-07-24T12:54:14+0900"
+  },
+  "pair3-b.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp16(+compile)",
+    "scheme": "fastmimifp16",
+    "seed": 2002,
+    "md5": "fe3bb8757633c846c5205ae5a3cc4277",
+    "generated": "2026-07-24T12:57:56+0900"
+  },
+  "pair4-a.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp16(+compile)",
+    "scheme": "fastmimifp16",
+    "seed": 7777,
+    "md5": "dc6c70ef0a69b49a9431e8ef8444ed03",
+    "generated": "2026-07-24T12:58:18+0900"
+  },
+  "pair4-b.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp32",
+    "scheme": "fast",
+    "seed": 7777,
+    "md5": "8922cfe359bb87bf96d93306c8bd6a10",
+    "generated": "2026-07-24T12:54:36+0900"
+  },
+  "pair5-a.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp16(+compile)",
+    "scheme": "fastmimifp16",
+    "seed": 31337,
+    "md5": "814604c4fdd848e3f96b0e3d103c3851",
+    "generated": "2026-07-24T12:58:39+0900"
+  },
+  "pair5-b.wav": {
+    "config": "w8a16 + dep-q-exit 8 + skip-other-mimi + rms-fusion, mimi fp32",
+    "scheme": "fast",
+    "seed": 31337,
+    "md5": "c3ef98b3bc29cc8dbd1ef1998318d466",
+    "generated": "2026-07-24T12:54:58+0900"
+  }
+}
