@@ -90,35 +90,39 @@ def wrap_with_system_tags(text: str) -> str:
     return f"<system> {cleaned} <system>"
 
 
-def warmup(mimi: MimiModel, other_mimi: MimiModel, lm_gen: LMGen, device: str, frame_size: int):
+def warmup(mimi: MimiModel, other_mimi: Optional[MimiModel], lm_gen: LMGen, device: str, frame_size: int):
     """Run a short warmup loop to initialize CUDA graphs and streaming state.
 
     Replicates the same warmup behavior as server.py: zeros → encode → LMGen.step → decode.
     """
+    wdtype = next(mimi.parameters()).dtype
     for _ in range(4):
-        chunk = torch.zeros(1, 1, frame_size, dtype=torch.float32, device=device)
+        chunk = torch.zeros(1, 1, frame_size, dtype=wdtype, device=device)
         codes = mimi.encode(chunk)
-        _ = other_mimi.encode(chunk)
+        if other_mimi is not None:
+            _ = other_mimi.encode(chunk)
         for c in range(codes.shape[-1]):
             tokens = lm_gen.step(codes[:, :, c : c + 1])
             if tokens is None:
                 continue
             # Decode agent audio channels to ensure decode graphs/states are primed
             _ = mimi.decode(tokens[:, 1:9])
-            _ = other_mimi.decode(tokens[:, 1:9])
+            if other_mimi is not None:
+                _ = other_mimi.decode(tokens[:, 1:9])
     if torch.cuda.is_available():
         torch.cuda.synchronize()
 
 
-def decode_tokens_to_pcm(mimi: MimiModel, other_mimi: MimiModel, lm_gen: LMGen, tokens: torch.Tensor) -> np.ndarray:
+def decode_tokens_to_pcm(mimi: MimiModel, other_mimi: Optional[MimiModel], lm_gen: LMGen, tokens: torch.Tensor) -> np.ndarray:
     """Decode a single step of model tokens to PCM using Mimi.
 
     tokens is shaped [B, dep_q+1, 1]; channels 1..dep_q are the agent audio codebooks.
     Returns a 1D float32 numpy array (mono) for the current frame.
     """
     pcm = mimi.decode(tokens[:, 1:9])
-    _ = other_mimi.decode(tokens[:, 1:9])
-    pcm = pcm.detach().cpu().numpy()[0, 0]
+    if other_mimi is not None:
+        _ = other_mimi.decode(tokens[:, 1:9])
+    pcm = pcm.float().detach().cpu().numpy()[0, 0]
     return pcm
 
 
@@ -170,6 +174,8 @@ def run_inference(
     save_voice_prompt_embeddings: bool,
     cpu_offload: bool = False,
     dep_q_exit: Optional[int] = None,
+    skip_other_mimi: bool = False,
+    mimi_fp16: bool = False,
 ):
     """Run offline inference using an input WAV as the user-side stream.
 
@@ -192,7 +198,16 @@ def run_inference(
     if mimi_weight is None:
         mimi_weight = hf_hub_download(hf_repo, loaders.MIMI_NAME)  # type: ignore
     mimi = loaders.get_mimi(mimi_weight, device)
-    other_mimi = loaders.get_mimi(mimi_weight, device)
+    # The second mimi stream is pure discarded work in this path (its
+    # encode/decode outputs are assigned to _ and its state is read
+    # nowhere; same in server.py lines 123/129/225/232).
+    other_mimi = None if skip_other_mimi else loaders.get_mimi(mimi_weight, device)
+    if mimi_fp16:
+        mimi = mimi.half()
+        mimi.torch_compile_encoder_decoder = True  # unlock torch_compile_lazy
+        if other_mimi is not None:
+            other_mimi = other_mimi.half()
+            other_mimi.torch_compile_encoder_decoder = True
     log("info", "mimi loaded")
 
     # 2) Load tokenizer
@@ -226,7 +241,8 @@ def run_inference(
     )
     # Keep models in streaming mode similar to the server
     mimi.streaming_forever(1)
-    other_mimi.streaming_forever(1)
+    if other_mimi is not None:
+        other_mimi.streaming_forever(1)
     lm_gen.streaming_forever(1)
 
     # 5) Warmup
@@ -250,7 +266,8 @@ def run_inference(
     #    - Text prompt injection
     #    - Final audio silence
     mimi.reset_streaming()
-    other_mimi.reset_streaming()
+    if other_mimi is not None:
+        other_mimi.reset_streaming()
     lm_gen.reset_streaming()
     lm_gen.step_system_prompts(mimi)
     # Reset mimi streaming after voice prompt encoding
@@ -383,11 +400,21 @@ def main():
                         help="Offload LM model layers to CPU when GPU memory is insufficient. "
                              "Requires 'accelerate' package.")
     parser.add_argument("--seed", type=int, default=-1, help="Seed for reproducibility (-1 disables)")
+    parser.add_argument("--skip-other-mimi", action="store_true",
+                        help="Skip the second mimi stream (its outputs are discarded in this path)")
+    parser.add_argument("--mimi-fp16", action="store_true",
+                        help="Run mimi in fp16 with its torch.compile path enabled")
     parser.add_argument("--dep-q-exit", type=int, default=0,
                         help="Stop the depformer after N steps (>=8). Safe in the serve flow "
                              "because user-side codebooks are always provided.")
 
     args = parser.parse_args()
+    if args.mimi_fp16:
+        import importlib.util
+        if importlib.util.find_spec("triton") is None:
+            raise RuntimeError(
+                "--mimi-fp16 uses torch.compile on CUDA, which requires "
+                "Triton; install it with `pip install triton`.")
 
     # If --voice-prompt-dir is omitted, voices.tgz is downloaded from HF and extracted.
     voice_prompt_dir = _get_voice_prompt_dir(
@@ -430,6 +457,8 @@ def main():
             save_voice_prompt_embeddings=False,
             cpu_offload=args.cpu_offload,
             dep_q_exit=args.dep_q_exit if args.dep_q_exit > 0 else None,
+            skip_other_mimi=args.skip_other_mimi,
+            mimi_fp16=args.mimi_fp16,
         )
 
 
