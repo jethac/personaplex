@@ -144,3 +144,20 @@ amend.
   flags are opt-in and defaults are unchanged.
 - Known unknowns: sm_121, n=1 machine (plus amarrmb's Spark/Thor for
   the fp8/server parts); task-level metrics (WER etc.) not measured.
+
+## Upstream overlap (pre-flight scan, 2026-07-24)
+- **PR #72** (@mvanhorn, Apr 6): removes the unused other_mimi instance
+  outright (~200 MB memory saving) — the same discarded-work observation
+  behind our --skip-other-mimi (credit to them for reaching it
+  independently). Difference: #72 changes default behavior by deleting
+  the second stream; ours keeps stock behavior byte-identical and makes
+  the skip opt-in per this PR's behavioral guarantees. If maintainers
+  prefer #72's hard removal, our flag reduces to a no-op and we would
+  rebase; if they prefer conservative defaults, #72's saving is
+  available here behind the flag.
+- server.py / offline.py are contended files across many open PRs
+  (#101 path-traversal fix, #84 H20 compile fast-path, #79 multi-GPU,
+  #75/#70 security, #62 HF_HUB_OFFLINE, #44 sphn API, #20 logging
+  refactor, macOS/MPS series #100/#91/#64/#25/#35). No semantic
+  conflicts with this series identified beyond #72; we will rebase at
+  filing time against whatever has merged.

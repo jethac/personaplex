@@ -62,3 +62,17 @@ preserved (their add7726) - it is a correctness fix independent of the
 performance series. The performance work is consolidated into a single
 second PR (`pr-gb10-realtime`, see 02-gb10-realtime.md), which is based
 on this branch.
+
+## Upstream overlap (pre-flight scan, 2026-07-24)
+- **PR #78** (@SuperMarioYL, Apr 8, open/unreviewed) widens ALL dependency
+  version ranges in pyproject.toml and overlaps our torch-pin change.
+  Credit to them for flagging the install failures broadly. Ours is
+  deliberately narrower: a torch-only relax, since blanket-unpinning every
+  dependency risks breakage from untested majors. We would happily rebase
+  this PR on #78 if the maintainer prefers the broader approach.
+- **PR #63** (@haosenwang1018, Feb 23) removes the same torch upper bound
+  (motivated by Python 3.13 support) — same one-line intent as our pin
+  relax; credit to them as an earlier report of the constraint. Either PR
+  merging first makes that hunk of ours a no-op rebase.
+- File-level only: #100/#76/#37/#32/#61 also touch pyproject.toml for
+  unrelated reasons (macOS/Nix, client fixes, UI, stdio runtime, Docker).
