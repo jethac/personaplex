@@ -42,6 +42,8 @@ from huggingface_hub import hf_hub_download
 import numpy as np
 import sentencepiece
 import sphn
+import typing as tp
+
 import torch
 import random
 
@@ -94,9 +96,10 @@ class ServerState:
     lm_gen: LMGen
     lock: asyncio.Lock
 
-    def __init__(self, mimi: MimiModel, other_mimi: MimiModel, text_tokenizer: sentencepiece.SentencePieceProcessor,
+    def __init__(self, mimi: MimiModel, other_mimi: tp.Optional[MimiModel], text_tokenizer: sentencepiece.SentencePieceProcessor,
                  lm: LMModel, device: str | torch.device, voice_prompt_dir: str | None = None,
-                 save_voice_prompt_embeddings: bool = False, fp8: bool = False):
+                 save_voice_prompt_embeddings: bool = False, fp8: bool = False,
+                 pinned_io: bool = False):
         self.mimi = mimi
         self.other_mimi = other_mimi
         self.text_tokenizer = text_tokenizer
@@ -113,25 +116,30 @@ class ServerState:
         )
         
         self.lock = asyncio.Lock()
-        # Pre-allocate pinned CPU buffer for non-blocking DtoH audio transfer
+        # Optional pinned CPU buffer for non-blocking DtoH audio transfer
         # mimi.decode output shape: [1, 1, 1920] (1920 samples per frame at 24kHz)
-        self._pinned_pcm = torch.empty(1920, dtype=torch.float32, pin_memory=True)
+        self._pinned_pcm = (torch.empty(1920, dtype=torch.float32, pin_memory=True)
+                            if pinned_io else None)
         self.mimi.streaming_forever(1)
-        self.other_mimi.streaming_forever(1)
+        if self.other_mimi is not None:
+            self.other_mimi.streaming_forever(1)
         self.lm_gen.streaming_forever(1)
     
     def warmup(self):
-        warmup_dtype = torch.float16 if self._fp8 else torch.float32
+        # dtype follows mimi (fp32 stock; fp16 only under --mimi-fp16)
+        warmup_dtype = next(self.mimi.parameters()).dtype
         for _ in range(4):
             chunk = torch.zeros(1, 1, self.frame_size, dtype=warmup_dtype, device=self.device)
             codes = self.mimi.encode(chunk)
-            # Skip other_mimi.encode — its output is always discarded
+            if self.other_mimi is not None:
+                _ = self.other_mimi.encode(chunk)
             for c in range(codes.shape[-1]):
                 tokens = self.lm_gen.step(codes[:, :, c: c + 1])
                 if tokens is None:
                     continue
                 _ = self.mimi.decode(tokens[:, 1:9])
-                # Skip other_mimi.decode — its output is always discarded
+                if self.other_mimi is not None:
+                    _ = self.other_mimi.decode(tokens[:, 1:9])
 
         if self.device.type == 'cuda':
             torch.cuda.synchronize()
@@ -210,7 +218,7 @@ class ServerState:
             all_pcm_data = None
             _frame_count = 0
             _profile_interval = 50  # log timing every 50 frames
-            _input_dtype = torch.float16 if self._fp8 else torch.float32
+            _input_dtype = next(self.mimi.parameters()).dtype
 
             while True:
                 if close:
@@ -238,7 +246,9 @@ class ServerState:
                         _t1 = time.time()
 
                     codes = self.mimi.encode(chunk)
-                    # Skip other_mimi.encode — output always discarded (saves ~6ms)
+                    if self.other_mimi is not None:
+                        # Output always discarded; skippable via --skip-other-mimi (saves ~6ms)
+                        _ = self.other_mimi.encode(chunk)
 
                     if _do_log:
                         torch.cuda.synchronize()
@@ -269,18 +279,24 @@ class ServerState:
                             _td0 = time.time()
 
                         main_pcm = self.mimi.decode(tokens[:, 1:9])
-                        # Skip other_mimi.decode — output always discarded (saves ~4ms)
+                        if self.other_mimi is not None:
+                            # Output always discarded; skippable via --skip-other-mimi (saves ~4ms)
+                            _ = self.other_mimi.decode(tokens[:, 1:9])
 
                         if _do_log:
                             torch.cuda.synchronize()
                             _td1 = time.time()
                             _decode_total += (_td1 - _td0)
 
-                        # Pinned memory DtoH transfer (saves ~2ms vs .cpu())
-                        main_pcm = main_pcm.float()
-                        self._pinned_pcm.copy_(main_pcm[0, 0], non_blocking=True)
-                        torch.cuda.current_stream().synchronize()
-                        opus_writer.append_pcm(self._pinned_pcm.numpy())
+                        if self._pinned_pcm is not None:
+                            # Pinned memory DtoH transfer (saves ~2ms vs .cpu())
+                            main_pcm = main_pcm.float()
+                            self._pinned_pcm.copy_(main_pcm[0, 0], non_blocking=True)
+                            torch.cuda.current_stream().synchronize()
+                            opus_writer.append_pcm(self._pinned_pcm.numpy())
+                        else:
+                            main_pcm = main_pcm.float().cpu()
+                            opus_writer.append_pcm(main_pcm[0, 0].numpy())
                         text_token = tokens[0, 0, 0].item()
                         if text_token not in (0, 3):
                             _text = self.text_tokenizer.id_to_piece(text_token)  # type: ignore
@@ -457,6 +473,15 @@ def main():
         action="store_true",
         help="Quantize LM weights to FP8 for ~1.4x faster inference (requires SM >= 89)"
     )
+    parser.add_argument(
+        "--skip-other-mimi", action="store_true",
+        help="Skip the second mimi stream (its outputs are discarded in this serve path)")
+    parser.add_argument(
+        "--mimi-fp16", action="store_true",
+        help="Run mimi in fp16 with torch.compile (requires a working torch.compile backend)")
+    parser.add_argument(
+        "--pinned-io", action="store_true",
+        help="Use a pinned CPU buffer for DtoH audio transfer")
 
     args = parser.parse_args()
     args.voice_prompt_dir = _get_voice_prompt_dir(
@@ -499,11 +524,12 @@ def main():
     if args.mimi_weight is None:
         args.mimi_weight = hf_hub_download(args.hf_repo, loaders.MIMI_NAME)
     mimi = loaders.get_mimi(args.mimi_weight, args.device)
-    other_mimi = loaders.get_mimi(args.mimi_weight, args.device)
-    if args.fp8:
+    other_mimi = None if args.skip_other_mimi else loaders.get_mimi(args.mimi_weight, args.device)
+    if args.mimi_fp16:
         # FP16 mimi + torch.compile for faster encode/decode (~3ms saved)
         mimi = mimi.half()
-        other_mimi = other_mimi.half()
+        if other_mimi is not None:
+            other_mimi = other_mimi.half()
         mimi.torch_compile_encoder_decoder = True
         mimi = torch.compile(mimi)
         logger.info("mimi loaded (FP16 + compiled)")
@@ -520,6 +546,12 @@ def main():
     lm = loaders.get_moshi_lm(args.moshi_weight, device=args.device, cpu_offload=args.cpu_offload)
     lm.eval()
     if args.fp8:
+        if torch.cuda.is_available():
+            cc = torch.cuda.get_device_capability()
+            if cc < (8, 9):
+                raise SystemExit(
+                    f"--fp8 requires compute capability >= 8.9 for FP8 "
+                    f"torch._scaled_mm (found sm_{cc[0]}{cc[1]})")
         from .fp8_quantize import quantize_model
         logger.info("applying FP8 quantization...")
         quantize_model(lm)
@@ -534,6 +566,7 @@ def main():
         voice_prompt_dir=args.voice_prompt_dir,
         save_voice_prompt_embeddings=False,
         fp8=args.fp8,
+        pinned_io=args.pinned_io,
     )
     logger.info("warming up the model")
     state.warmup()
