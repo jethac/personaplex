@@ -169,6 +169,7 @@ def run_inference(
     greedy: bool,
     save_voice_prompt_embeddings: bool,
     cpu_offload: bool = False,
+    dep_q_exit: Optional[int] = None,
 ):
     """Run offline inference using an input WAV as the user-side stream.
 
@@ -221,6 +222,7 @@ def run_inference(
         temp_text=temp_text,
         top_k=topk_audio,
         top_k_text=topk_text,
+        depformer_early_exit=dep_q_exit,
     )
     # Keep models in streaming mode similar to the server
     mimi.streaming_forever(1)
@@ -381,6 +383,9 @@ def main():
                         help="Offload LM model layers to CPU when GPU memory is insufficient. "
                              "Requires 'accelerate' package.")
     parser.add_argument("--seed", type=int, default=-1, help="Seed for reproducibility (-1 disables)")
+    parser.add_argument("--dep-q-exit", type=int, default=0,
+                        help="Stop the depformer after N steps (>=8). Safe in the serve flow "
+                             "because user-side codebooks are always provided.")
 
     args = parser.parse_args()
 
@@ -424,6 +429,7 @@ def main():
             greedy=greedy,
             save_voice_prompt_embeddings=False,
             cpu_offload=args.cpu_offload,
+            dep_q_exit=args.dep_q_exit if args.dep_q_exit > 0 else None,
         )
 
 
