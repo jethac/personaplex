@@ -176,6 +176,7 @@ def run_inference(
     dep_q_exit: Optional[int] = None,
     skip_other_mimi: bool = False,
     mimi_fp16: bool = False,
+    fp8: bool = False,
 ):
     """Run offline inference using an input WAV as the user-side stream.
 
@@ -221,6 +222,20 @@ def run_inference(
         moshi_weight = hf_hub_download(hf_repo, loaders.MOSHI_NAME)  # type: ignore
     lm = loaders.get_moshi_lm(moshi_weight, device=device, cpu_offload=cpu_offload)
     lm.eval()
+    if fp8:
+        if not torch.cuda.is_available():
+            raise RuntimeError("--fp8 requires a CUDA device.")
+        cc = torch.cuda.get_device_capability()
+        if cc < (8, 9):
+            raise RuntimeError(
+                f"--fp8 requires compute capability >= 8.9 for FP8 "
+                f"torch._scaled_mm (found sm_{cc[0]}{cc[1]}).")
+        if not hasattr(torch, "_scaled_mm"):
+            raise RuntimeError(
+                "--fp8 requires torch._scaled_mm (torch >= 2.2 CUDA build).")
+        from .fp8_quantize import quantize_model
+        log("info", "applying FP8 quantization")
+        quantize_model(lm)
     log("info", "moshi loaded")
 
     # 4) Construct LMGen like server.py's ServerState does
@@ -248,6 +263,9 @@ def run_inference(
     # 5) Warmup
     log("info", "warming up the model")
     warmup(mimi, other_mimi, lm_gen, device, frame_size)
+    if fp8:
+        from .fp8_quantize import free_bf16_inproj
+        free_bf16_inproj(lm)
 
     # 6) Prompt configuration (text + voice)
     # System text tokens (k=0) and agent voice-prompt audio (k=1..dep_q) are forced
@@ -400,6 +418,8 @@ def main():
                         help="Offload LM model layers to CPU when GPU memory is insufficient. "
                              "Requires 'accelerate' package.")
     parser.add_argument("--seed", type=int, default=-1, help="Seed for reproducibility (-1 disables)")
+    parser.add_argument("--fp8", action="store_true",
+                        help="Quantize LM linears to FP8 (torch._scaled_mm; requires SM >= 89)")
     parser.add_argument("--skip-other-mimi", action="store_true",
                         help="Skip the second mimi stream (its outputs are discarded in this path)")
     parser.add_argument("--mimi-fp16", action="store_true",
@@ -459,6 +479,7 @@ def main():
             dep_q_exit=args.dep_q_exit if args.dep_q_exit > 0 else None,
             skip_other_mimi=args.skip_other_mimi,
             mimi_fp16=args.mimi_fp16,
+            fp8=args.fp8,
         )
 
 
