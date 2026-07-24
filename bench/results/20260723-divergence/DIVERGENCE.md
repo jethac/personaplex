@@ -74,3 +74,18 @@ stream shows a single click/energy discontinuity above threshold in 25k
 
 Not measured here: task-level quality (WER/e2e conversational metrics) —
 these gates cover numeric drift and signal health only.
+
+## Perceptual addendum (v2 multi-seed listening, 2026-07-24)
+
+User listening over the multi-seed matrix (bench/results/20260724-audio-v2/)
+confirmed the interpretation rule works in practice: per-seed cross-scheme
+comparisons are DIFFERENT TRAJECTORIES (divergence at frames 2-3), so
+single-clip quirks are not scheme attributes. Concretely: seed 2002
+produces oddities even in bf16 (truncation + topic shift + rising final
+intonation, corroborated by an f0-contour analysis: bf16-s2002 final-400ms
+slope +51 Hz/s vs falling contours on normal seeds in every scheme) — the
+"strange final intonation" noted for w8a16/nvfp4ffn at s2002 falls within
+the reference's own band, and fp8-depq8's "perfect" s2002 was trajectory
+luck. Verdicts above are unchanged; the drift ladder remains the objective
+evidence. The one perceptual finding that survived isolation testing is
+tracked in the audio-v2 README (mimi-fp16 onset A/B).
