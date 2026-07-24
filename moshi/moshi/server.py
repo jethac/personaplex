@@ -520,6 +520,14 @@ def main():
     # No worries about double-counting since config.json will be cached the second time
     hf_hub_download(args.hf_repo, "config.json")
 
+    _perf_flags = (args.fp8 or args.skip_other_mimi or args.mimi_fp16
+                   or args.pinned_io)
+    if (not _perf_flags and torch.cuda.is_available()
+            and torch.cuda.get_device_capability() == (12, 1)):
+        logger.info("GB10-class device detected (sm_121): real-time "
+                    "performance requires opt-in flags; try the flags in "
+                    "the GB10 PR notes (e.g. --fp8/--skip-other-mimi)")
+
     logger.info("loading mimi")
     if args.mimi_weight is None:
         args.mimi_weight = hf_hub_download(args.hf_repo, loaders.MIMI_NAME)

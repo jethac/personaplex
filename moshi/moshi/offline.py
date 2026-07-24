@@ -464,6 +464,16 @@ def main():
     if args.fp8 and args.w8a16:
         parser.error("--fp8 and --w8a16 are mutually exclusive")
 
+    # GB10 discoverability hint: log-only, fires only when NO perf flag is
+    # active and only on sm_121-class devices; never changes behavior.
+    _perf_flags = (args.fast or args.fp8 or args.w8a16 or args.mimi_fp16
+                   or args.skip_other_mimi or args.dep_q_exit > 0)
+    if (not _perf_flags and torch.cuda.is_available()
+            and torch.cuda.get_device_capability() == (12, 1)):
+        log("info", "GB10-class device detected (sm_121): real-time "
+                    "performance requires opt-in flags; try --fast "
+                    "(see PR notes)")
+
     # If --voice-prompt-dir is omitted, voices.tgz is downloaded from HF and extracted.
     voice_prompt_dir = _get_voice_prompt_dir(
         args.voice_prompt_dir,
