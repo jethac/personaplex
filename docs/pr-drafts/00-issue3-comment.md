@@ -39,8 +39,13 @@ One-command repro (after the playbook setup in docs/gb10-playbook.md):
 taskset -c 5-9,15-19 python bench/bench.py --fast --frames 500 --out bench/results/repro
 ```
 
-We have this staged as a small PR series (build fixes -> depformer early
-exit -> mimi fast path -> w8a16 + `--fast` -> bench harness + playbook),
-each with isolated diffs and evidence — happy to open them if maintainers
-are interested. Credit to @amarrmb for the fp8 groundwork that started
-this line of work.
+We have this staged as two PRs on our fork: **pr-build-fixes**
+(torch-pin relax, meta-tensor load fix, a dtype-cast bugfix — the small
+set that makes GB10 installable) and **pr-gb10-realtime** (the
+performance series: amarrmb's fp8 groundwork cherry-picked with
+authorship preserved, depformer early exit, mimi fast-path flags, and
+the w8a16 weight-only scheme + `--fast` preset), with the bench
+harness/playbook available as a follow-up PR on request. Happy to open
+them if maintainers are interested. Credit to @amarrmb for the fp8
+groundwork that started this line of work, and to @gplv2 / @acatovic /
+@listerheaton for the thread findings we built on.

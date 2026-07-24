@@ -53,3 +53,12 @@ is inert when checkpoints are complete.
   upstream PR #18's meta-device init.
 - @amarrmb: please flag any attribution adjustment you'd like — happy to
   amend.
+
+
+## Update (consolidated series)
+This branch (`pr-build-fixes`) now also carries @amarrmb's
+encode_from_sphn dtype-cast bugfix, cherry-picked with authorship
+preserved (their add7726) - it is a correctness fix independent of the
+performance series. The performance work is consolidated into a single
+second PR (`pr-gb10-realtime`, see 02-gb10-realtime.md), which is based
+on this branch.
