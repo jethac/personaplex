@@ -24,8 +24,9 @@ but stage mix differs — see flags).
 | w8a16 | 61.42 | 62.78 | 63.02 | 63.10 | 0/475 |
 | w8a16 + depq8 | 53.82 | 54.91 | 55.34 | 55.44 | 0/475 |
 | w8a16 + depq8 + rmsnorm-fusion | 53.31 | 54.46 | 54.99 | 55.30 | 0/475 |
-| --fast (w8a16+depq8+skipother+mimifp16+fusion) | 46.47 | 47.58 | 48.11 | 48.11 | 0/475 |
-| **--fast --nvfp4-ffn** | **41.78** | **43.16** | **43.79** | 44.05 | 0/475 |
+| fast+mimi-fp16 (former preset; mimi-fp16 demoted after listening gate) | 46.47 | 47.58 | 48.11 | 48.11 | 0/475 |
+| **--fast** (w8a16+depq8+skipother+fusion; current preset) | **48.56** | **49.58** | **50.40** | 50.47 | 0/475 |
+| fast+mimi-fp16 +nvfp4-ffn (opt-in stack) | 41.78 | 43.16 | 43.79 | 44.05 | 0/475 |
 
 ## step_ms (lm_gen.step only)
 
@@ -39,11 +40,16 @@ but stage mix differs — see flags).
 | w8a16 | 51.06 | 52.40 | 52.65 |
 | w8a16 + depq8 | 43.59 | 44.62 | 44.71 |
 | w8a16 + depq8 + rmsnorm-fusion | 42.95 | 44.07 | 44.55 |
-| --fast | 43.16 | 44.26 | 44.70 |
-| --fast --nvfp4-ffn | 38.39 | 39.70 | 40.15 |
+| fast+mimi-fp16 (former preset) | 43.16 | 44.26 | 44.70 |
+| --fast (current preset) | 43.45 | 44.48 | 45.05 |
+| fast+mimi-fp16+nvfp4-ffn | 38.39 | 39.70 | 40.15 |
 
---fast composition: --w8a16 --dep-q-exit 8 --skip-other-mimi --mimi-fp16
-plus the rms_norm torch_compile_lazy fusion (in-tree). w8a16 is the
+--fast composition: --w8a16 --dep-q-exit 8 --skip-other-mimi plus the
+rms_norm torch_compile_lazy fusion (in-tree). --mimi-fp16 was demoted
+from the preset after blind user listening detected softened onset
+transients in fp16-mimi clips (an effect that evaded L2/spectral onset
+metrics — see 20260724-audio-v2/README.md); it remains opt-in and its
+former-preset numbers are kept above for the record. w8a16 is the
 weight-only 8-bit Triton GEMV path (bf16 activations); it BEATS full fp8
 by ~16 ms of step because torch._scaled_mm dispatches to a slow sm89
 path on sm_121 while the Triton kernel sustains 232-242 GB/s — see

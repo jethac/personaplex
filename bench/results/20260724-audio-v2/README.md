@@ -99,3 +99,21 @@ Results:
   SAME "eyy" onset as fast-s42424.wav. If confirmed, the artifact is
   trajectory luck; if it sounds clean, the criterion above is wrong and
   we demote mimi-fp16 from --fast.
+
+## AMENDMENT: the prediction FAILED — mimi-fp16 demoted from --fast
+User listening (blind-ish A/B): fast-s42424 has the "eyy" onset;
+fastfp32mimi-s42424 has a clean "hey". The numeric analysis above
+(0.003 rel L2 / 0.003 spectral diff over the first 0.5 s) predicted no
+audible difference and was WRONG: a perceptually salient difference in
+the ~20 ms attack transient hid inside metrics dominated by the rest of
+the window. Standing lesson, recorded for the protocol: transient-attack
+differences evade sub-second L2/spectral aggregates; human listening is
+reserved as a release gate precisely because of this failure class.
+
+Verdict wording amended: mimi-fp16 is **exonerated on token trajectory,
+convicted on onset transient rendering.**
+
+Actions taken: --mimi-fp16 removed from the --fast preset (remains
+opt-in), --fast rebenchmarked, fast clips regenerated with the new
+preset (the previous fp16-mimi clips are kept as fast-mimifp16-s*.wav
+for the record).

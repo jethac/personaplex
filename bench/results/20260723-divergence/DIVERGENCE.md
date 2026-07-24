@@ -89,3 +89,14 @@ the reference's own band, and fp8-depq8's "perfect" s2002 was trajectory
 luck. Verdicts above are unchanged; the drift ladder remains the objective
 evidence. The one perceptual finding that survived isolation testing is
 tracked in the audio-v2 README (mimi-fp16 onset A/B).
+
+### Amendment (same day): listening gate falsified the onset analysis
+The mimi-fp16 onset A/B prediction failed: the user hears the degraded
+onset in the fp16-mimi clip and a clean one in the fp32-mimi clip,
+despite 0.003 rel-L2 / 0.003 spectral difference over the first 0.5 s.
+mimi-fp16 is exonerated on token trajectory, convicted on onset
+transient rendering — a ~20 ms attack-transient effect that evades
+sub-second aggregate metrics. Consequence: --mimi-fp16 demoted from the
+--fast preset (opt-in only, with a warning note in its docs); this
+episode is the canonical example of why this protocol reserves human
+listening as a release gate over numeric health metrics.

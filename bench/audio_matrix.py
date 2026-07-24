@@ -40,7 +40,9 @@ SCHEMES = {
     "w8a16": ("w8a16", None, False, False),
     "fp8-depq8": ("fp8", 8, False, False),
     "w8a16-nvfp4ffn": ("nvfp4+w8a16", None, False, False),
-    "fast": ("w8a16", 8, True, True),
+    "fast": ("w8a16", 8, True, False),  # mimi-fp16 demoted after listening gate
+    # isolation cell: --fast minus mimi-fp16 (mimi stays fp32)
+    "fastfp32mimi": ("w8a16", 8, True, False),
 }
 
 

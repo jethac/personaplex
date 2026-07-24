@@ -1,0 +1,14 @@
+config: fast-v2
+frames: 475 summarized (of 500, warm_skip=25)
+cold start: load_mimi_s=3.25s, load_tokenizer_s=0.20s, load_lm_s=135.86s, w8a16_quantize_s=0.81s, warmup_s=2.12s, voice_prompt=/home/jethac/.cache/huggingface/hub/models--nvidia--personaplex-7b-v1/snapshots/fdaf4090a61cb315c138a1faee287ffd6c716309/voices/NATM1.pt, prompt_phase_s=4.07s, total_cold_start_s=146.36s
+budget 80ms: 0 misses (0.00%), longest streak 0
+stage                  mean      p50      p90      p95      p99    p99.9      max
+---------------------------------------------------------------------------------
+total_ms              48.70    48.56    49.36    49.50    49.58    50.40    50.47
+opus_ms                0.00     0.00     0.00     0.00     0.00     0.00     0.00
+encode_main_ms         2.95     2.94     2.95     2.96     3.40     3.90     3.91
+encode_other_ms        0.00     0.00     0.00     0.00     0.00     0.00     0.00
+step_ms               43.58    43.45    44.06    44.39    44.48    45.05    45.36
+decode_main_ms         2.10     2.09     2.10     2.12     2.50     2.69     2.71
+decode_other_ms        0.00     0.00     0.00     0.00     0.00     0.00     0.00
+d2h_ms                 0.02     0.02     0.02     0.02     0.02     0.06     0.07

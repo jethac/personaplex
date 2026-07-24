@@ -4,7 +4,7 @@
 Following up with measured results on a GB10 machine (Lenovo ThinkStation
 PGX, sm_121, aarch64, torch 2.13.0+cu130, driver 595.71.05).
 
-**Headline: stock 101.7 ms/frame -> 46.5 ms p50 / 48.1 ms p99.9 with an
+**Headline: stock 101.7 ms/frame -> 48.6 ms p50 / 50.4 ms p99.9 with an
 opt-in flag stack — comfortably inside the 80 ms real-time budget (0
 misses in 475-frame protocol runs), with unchanged bf16 activations.**
 
@@ -13,7 +13,7 @@ misses in 475-frame protocol runs), with unchanged bf16 activations.**
 | stock bf16 | 101.66 / 103.52 / 103.59 | 475/475 |
 | fp8 (amarrmb's approach) | 77.61 / 78.86 / 79.50 | 0 |
 | w8a16 weight-only (ours) | 61.42 / 62.78 / 63.02 | 0 |
-| `--fast` (w8a16 + depformer-exit-8 + skip-other-mimi + fp16 mimi + fused norms) | **46.47 / 47.58 / 48.11** | 0 |
+| `--fast` (w8a16 + depformer-exit-8 + skip-other-mimi + fused norms) | **48.56 / 49.58 / 50.40** | 0 |
 
 Key findings for this hardware class:
 - The LM step is weight-streaming-bound (~449 batch-1 GEMVs, ~13 GB/frame).
