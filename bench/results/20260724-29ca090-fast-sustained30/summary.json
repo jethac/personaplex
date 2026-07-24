@@ -1,0 +1,96 @@
+{
+  "config": "fast-sustained30",
+  "frames_total": 38478,
+  "frames_summarized": 38453,
+  "warm_skip": 25,
+  "cold_start": {
+    "load_mimi_s": 2.775790086016059,
+    "load_tokenizer_s": 0.2523925299756229,
+    "load_lm_s": 111.30136014497839,
+    "w8a16_quantize_s": 0.7970283360336907,
+    "warmup_s": 3.5520061749848537,
+    "voice_prompt": "/home/jethac/.cache/huggingface/hub/models--nvidia--personaplex-7b-v1/snapshots/fdaf4090a61cb315c138a1faee287ffd6c716309/voices/NATM1.pt",
+    "prompt_phase_s": 4.040513408952393,
+    "total_cold_start_s": 122.79017939296318
+  },
+  "stages": {
+    "total_ms": {
+      "mean": 46.756,
+      "p50": 46.645,
+      "p90": 47.22,
+      "p95": 47.57,
+      "p99": 47.754,
+      "p99.9": 48.2,
+      "max": 48.958
+    },
+    "opus_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "p99.9": 0.0,
+      "max": 0.0
+    },
+    "encode_main_ms": {
+      "mean": 1.789,
+      "p50": 1.784,
+      "p90": 1.792,
+      "p95": 1.797,
+      "p99": 1.858,
+      "p99.9": 2.593,
+      "max": 2.752
+    },
+    "encode_other_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "p99.9": 0.0,
+      "max": 0.0
+    },
+    "step_ms": {
+      "mean": 43.417,
+      "p50": 43.313,
+      "p90": 43.833,
+      "p95": 44.236,
+      "p99": 44.413,
+      "p99.9": 44.854,
+      "max": 45.363
+    },
+    "decode_main_ms": {
+      "mean": 1.464,
+      "p50": 1.46,
+      "p90": 1.466,
+      "p95": 1.469,
+      "p99": 1.526,
+      "p99.9": 2.252,
+      "max": 2.477
+    },
+    "decode_other_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "p99.9": 0.0,
+      "max": 0.0
+    },
+    "d2h_ms": {
+      "mean": 0.021,
+      "p50": 0.021,
+      "p90": 0.021,
+      "p95": 0.021,
+      "p99": 0.025,
+      "p99.9": 0.035,
+      "max": 0.168
+    }
+  },
+  "budget": {
+    "budget_ms": 80.0,
+    "miss_count": 0,
+    "miss_fraction": 0.0,
+    "longest_miss_streak": 0
+  }
+}
