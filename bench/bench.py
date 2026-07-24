@@ -679,7 +679,7 @@ def main():
                    help="quantize LM linears to FP8 (torch._scaled_mm path)")
     p.add_argument("--fast", action="store_true",
                    help="preset: enable the current best latency stack "
-                        "(w8a16 + dep-q-exit 8 + skip-other-mimi)")
+                        "(w8a16 + dep-q-exit 8 + skip-other-mimi + mimi-fp16)")
     p.add_argument("--nvfp4-ffn", action="store_true",
                    help="NVFP4 weight-only quantization of the temporal "
                         "transformer FFN (applied before --fp8; combine "
@@ -705,12 +705,13 @@ def main():
 
     if args.fast:
         # --fast: current best stack (see bench/results/ABLATIONS.md).
-        # NOTE: --mimi-fp16 was demoted from the preset after user
-        # listening detected softened onset transients (metric-evading);
-        # it remains available as an explicit opt-in flag.
+        # mimi-fp16 is included: a single-trial listening report against
+        # it was falsified by a 5-pair blind A/B (0/5 discrimination;
+        # see bench/results/20260724-audio-v3/).
         args.w8a16 = True
         args.dep_q_exit = args.dep_q_exit or 8
         args.skip_other_mimi = True
+        args.mimi_fp16 = True
         if args.config_label == "bf16-stock":
             args.config_label = "fast"
     if args.fp8 and args.w8a16:

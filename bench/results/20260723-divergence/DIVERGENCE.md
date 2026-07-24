@@ -100,3 +100,17 @@ sub-second aggregate metrics. Consequence: --mimi-fp16 demoted from the
 --fast preset (opt-in only, with a warning note in its docs); this
 episode is the canonical example of why this protocol reserves human
 listening as a release gate over numeric health metrics.
+
+### Final amendment: blind matched-pairs A/B reversed the demotion
+A 5-pair blind A/B (bench/results/20260724-audio-v3/, sealed key,
+honor-system) scored **0/5 within-pair discrimination** between fp16 and
+fp32 mimi at identical LM stacks: the "eyy" onset tracks the sampling
+seed (both precisions at 42424/7777), not mimi precision. --mimi-fp16 is
+reinstated into --fast per the pre-registered rule. Full episode:
+single-trial detection -> checksum contradiction -> retraction -> blind
+protocol -> 0/5 -> reinstatement. The single-trial "conviction on onset
+transient rendering" is WITHDRAWN; the numeric onset analysis (shared
+prefix, 0.003 rel-L2) was correct. pair2's "questions"->"question" is
+the expected fp16-encode trajectory-divergence class, not a defect.
+Standing instrument hierarchy: blind matched-pairs listening > numeric
+health metrics > single-trial listening.

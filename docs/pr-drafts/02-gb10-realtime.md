@@ -1,4 +1,4 @@
-# PR2 — GB10 real-time serving: quantization + serve-path optimizations (2.1x, 101.7 -> 48.6 ms/frame)
+# PR2 — GB10 real-time serving: quantization + serve-path optimizations (2.2x, 101.7 -> 46.5 ms/frame)
 
 **Status: DRAFT — not yet opened. Depends on PR `pr-build-fixes` (GitHub
 will show its commits combined until that merges).**
@@ -37,8 +37,7 @@ the depformer's unused half.
    sustains 222-242 GB/s cold vs 126-226 for torch._scaled_mm on sm_121
    (which lands on an sm89 path), so weight-only beats full FP8 by
    ~16 ms/frame while perturbing logits ~25-30% less. `--fast` =
-   `--w8a16 --dep-q-exit 8 --skip-other-mimi` (mimi-fp16 deliberately
-   excluded — see the --mimi-fp16 note in Behavioral guarantees).
+   `--w8a16 --dep-q-exit 8 --skip-other-mimi --mimi-fp16`.
 
 **What is original here:** the Triton dequant-in-register GEMV, the
 per-channel w8a16 scheme built on it, the `--fast` preset, and the
@@ -55,15 +54,12 @@ amarrmb's work, carried with commit-level attribution.
 | fp8 | 77.61 / 78.86 / 79.50 | 0 |
 | w8a16 | 61.42 / 62.78 / 63.02 | 0 |
 | w8a16 + depq8 | 53.82 / 54.91 / 55.34 | 0 |
-| **--fast** | **48.56 / 49.58 / 50.40** | 0 |
-| fast + --mimi-fp16 (opt-in) | 46.47 / 47.58 / 48.11 | 0 |
+| **--fast** | **46.47 / 47.58 / 48.11** | 0 |
+| fast with fp32 mimi (variant) | 48.56 / 49.58 / 50.40 | 0 |
 
 ## Sustained validation (30 min, dmon alongside)
-38,453 warm frames (measured with the former preset incl. mimi-fp16):
-p50 46.65 / p99 47.75 / **p99.9 48.20 / max 48.96 ms — zero budget
-misses**; the current preset adds ~1.9 ms of mimi-side fp32 cost with
-an unchanged LM step, so its sustained behavior is bounded by the same
-envelope (+2 ms). GPU 51->66 C, SM clocks −1.8%, 33->37 W: no
+38,453 warm frames: p50 46.65 / p99 47.75 / **p99.9 48.20 / max 48.96 ms
+— zero budget misses**. GPU 51->66 C, SM clocks −1.8%, 33->37 W: no
 thermal cliff; the headline holds warm.
 
 ## Quality evidence (tolerance ladder)
@@ -117,11 +113,11 @@ performance contract, it errors rather than quietly degrading):
 |---|---|---|
 | `--fp8` | CUDA, compute capability >= 8.9, `torch._scaled_mm` | explicit startup check in server and offline wiring |
 | `--w8a16` | CUDA + Triton | module imports without Triton (lazy kernel builder, built+cached on first use); quantize errors with install hint if Triton missing |
-| `--mimi-fp16` | working torch.compile backend (Triton on CUDA) | checked at argument parse time. NOTE: can subtly soften onset transients (user-detected in blind listening; evaded L2/spectral onset metrics) — deliberately NOT part of --fast |
+| `--mimi-fp16` | working torch.compile backend (Triton on CUDA) | checked at argument parse time. Perceptual note: a single-trial report of onset softening was falsified by a 5-pair blind matched-pairs A/B (0/5 discrimination; onset character tracks the sampling seed, not mimi precision) — part of --fast |
 | `--dep-q-exit` | none (pure logic) | precondition guard: rejects steps without user input tokens |
 | `--skip-other-mimi` | none (pure logic) | n/a |
 | `--pinned-io` | CUDA | n/a (allocation-time) |
-| `--fast` | composes w8a16 + dep-q-exit + skip-other-mimi | composed startup check that names the specific missing prerequisite |
+| `--fast` | composes the above | composed startup check that names the specific missing prerequisite |
 
 No architecture-sniffing anywhere: capability checks only, no `sm_121`
 conditionals; the Triton ptxas symlink workaround is documentation-only

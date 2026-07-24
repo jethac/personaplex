@@ -21,3 +21,40 @@ any other difference. Then unseal KEY.json and score:
 ## Files
 See MANIFEST.md for md5/seed/timestamps. pair<N>-<letter>.json holds the
 sampled text tokens of the matching wav.
+
+## RESULT (unsealed 2026-07-24): 0/5 — mimi-fp16 REINSTATED
+
+User's verbatim per-pair results: pair1 both "eyy"; pair2 both "hey" but
+pair2-b says "question" not "questions"; pair3 both correct words,
+slightly weird intonation; pair4 both "eyy"; pair5 both correct, somewhat
+over-enunciated. Within-pair discrimination: **0/5**. Onset character
+tracks the SEED (42424/7777 = "eyy" in BOTH precisions; 1001 = "hey" in
+both) — a trajectory property, not a precision property. Per the
+pre-registered rule, --mimi-fp16 is reinstated into --fast.
+
+### Case study (full episode, recorded honestly)
+1. Single-trial listening detected a degraded onset in a fast (fp16-mimi)
+   clip vs an isolation (fp32-mimi) clip → mimi-fp16 demoted.
+2. The numeric onset analysis had predicted no audible difference
+   (0.003 rel-L2 over the shared prefix) — apparently falsified.
+3. Sync-timing muddied clip identities; checksums contradicted the
+   session; user retracted the comparison.
+4. This blind matched-pairs protocol was run: fresh files, sealed key,
+   honor-system listen-first.
+5. Score 0/5 → the single-trial detection was pattern-matching on
+   trajectory differences, not precision; **the numeric onset analysis
+   was correct all along.**
+
+Lesson, standing: single-trial listening at threshold pattern-matches
+trajectories; blind matched-pairs listening is the reliable perceptual
+instrument; numeric prefix analysis and blind listening agreed in the
+end.
+
+### pair2 token divergence (expected class)
+pair2-a.wav = fast (fp32 mimi), seed 1001, md5 53d4b561...;
+pair2-b.wav = fastmimifp16, seed 1001, md5 8afe05f9.... The
+"questions"->"question" difference in pair2-b is fp16-encode-induced
+token divergence: mimi-fp16 perturbs the encoded user codes, sampling
+diverges (the frame-2-3 class documented in DIVERGENCE.md), and the two
+clips are different valid trajectories. This is expected and covered by
+the drift ladder; it is not a rendering defect.
