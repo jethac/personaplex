@@ -88,6 +88,40 @@ Lenovo ThinkStation PGX — GB10 (sm_121, 48 SMs, 25 MB L2), aarch64,
 python 3.12.3, torch 2.13.0+cu130, triton 3.7.1 with system ptxas
 symlinked over the bundled ptxas-blackwell.
 
+## Behavioral guarantees
+
+**Zero change without flags.** Every optimization is opt-in; each verbatim
+contributor cherry-pick is immediately followed by a gating fixup commit so
+that at the branch tip, stock invocation matches upstream. Evidence: a
+seeded no-flag offline run (seed 42424, 30 s input, 375 frames, real
+weights) on the branch tip vs upstream/main produced **byte-identical
+output WAV and byte-identical token stream** (`cmp` on both artifacts).
+The only remaining non-numeric deltas are (a) a per-50-frames timing log
+line in the server loop (observability only; happy to gate or drop it on
+request) and (b) one informational log line at startup on GB10-class
+devices (sm_121) when no perf flag is active, pointing users at the
+opt-in flags — added as the FINAL commit of the series so a maintainer
+can drop it independently; it fires on no other arch and never when any
+perf flag is set.
+
+**Per-flag prerequisites** (checked at startup/model-build time with
+actionable RuntimeErrors; no silent fallbacks — if a flag cannot meet its
+performance contract, it errors rather than quietly degrading):
+
+| flag | requirement | check |
+|---|---|---|
+| `--fp8` | CUDA, compute capability >= 8.9, `torch._scaled_mm` | explicit startup check in server and offline wiring |
+| `--w8a16` | CUDA + Triton | module imports without Triton (lazy kernel builder, built+cached on first use); quantize errors with install hint if Triton missing |
+| `--mimi-fp16` | working torch.compile backend (Triton on CUDA) | checked at argument parse time |
+| `--dep-q-exit` | none (pure logic) | precondition guard: rejects steps without user input tokens |
+| `--skip-other-mimi` | none (pure logic) | n/a |
+| `--pinned-io` | CUDA | n/a (allocation-time) |
+| `--fast` | composes the above | composed startup check that names the specific missing prerequisite |
+
+No architecture-sniffing anywhere: capability checks only, no `sm_121`
+conditionals; the Triton ptxas symlink workaround is documentation-only
+(GB10 playbook), never code. The Triton GEMV is generic sm_80+.
+
 ## Attribution
 | what | who | provenance |
 |---|---|---|
