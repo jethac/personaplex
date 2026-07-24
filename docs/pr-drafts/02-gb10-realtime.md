@@ -26,13 +26,26 @@ the depformer's unused half.
 3. **Mimi fast-path flags** (`--skip-other-mimi`, `--mimi-fp16`):
    amarrmb's server-side ideas as opt-in offline.py flags with None-safe
    plumbing (−5.4 ms and −1.9 ms).
-4. **w8a16 weight-only quantization + `--fast` preset**: weights stored
-   fp8-e4m3 with per-channel scales, dequantized in-register by a
+4. **Quantization scaffolding + `--fp8` wiring** (derived work,
+   Co-authored-by @amarrmb): offline-path wiring of their quantizer and
+   the shared layer-selection/patching scaffolding in w8a16_quantize.py
+   (module walk, min_features gate, depformer-self_attn skip, in_proj
+   handling, class-patch machinery), with a naive dequant baseline.
+5. **w8a16 kernel + presets** (original work): weights stored fp8-e4m3
+   with per-output-channel scales, dequantized in-register by a
    hand-written Triton GEMV; **activations stay bf16**. The GEMV
    sustains 222-242 GB/s cold vs 126-226 for torch._scaled_mm on sm_121
    (which lands on an sm89 path), so weight-only beats full FP8 by
    ~16 ms/frame while perturbing logits ~25-30% less. `--fast` =
    `--w8a16 --dep-q-exit 8 --skip-other-mimi --mimi-fp16`.
+
+**What is original here:** the Triton dequant-in-register GEMV, the
+per-channel w8a16 scheme built on it, the `--fast` preset, and the
+finding that weight-only 8-bit outperforms full FP8 on sm_121 (a
+kernel-dispatch effect, not a numerics one) — plus the depformer
+invariance proof and all measurements/quality gates. The FP8 quantizer,
+the serve-path optimizations, and the quantization scaffolding are
+amarrmb's work, carried with commit-level attribution.
 
 ## Ablation ladder (pre-registered protocol, 500 frames, real weights, GB10)
 | config | total ms p50 / p99 / p99.9 | budget misses |
@@ -83,7 +96,8 @@ symlinked over the bundled ptxas-blackwell.
 | depformer early-exit observation | @gplv2 | NVIDIA/personaplex#3 discussion |
 | early-exit implementation + invariance proof + guards | jethac | this PR |
 | mimi flags adaptation (offline path) | jethac, Co-authored-by @amarrmb | this PR |
-| w8a16 scheme, Triton GEMV, --fast, all measurements & quality gates | jethac | this PR |
+| quantization scaffolding (layer walk/gates/class patches) + --fp8 wiring | derived from @amarrmb's fp8_quantize.py | this PR, commit "quantization scaffolding", Co-authored-by trailer |
+| w8a16 scheme, Triton dequant GEMV, per-channel scaling, --w8a16/--fast, all measurements & quality gates | jethac | this PR, commit "w8a16: weight-only..." (no co-author: original work) |
 | torch-pin conflict report / ptxas notes | @acatovic / @listerheaton | NVIDIA/personaplex#3 |
 
 @amarrmb: please flag any attribution adjustment you'd like — happy to
