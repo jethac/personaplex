@@ -1,19 +1,26 @@
 # SPDX-License-Identifier: MIT
-"""Weight-only 8-bit quantization (w8a16) scaffolding for PersonaPlex/Moshi.
+"""Weight-only 8-bit quantization (w8a16) for PersonaPlex/Moshi.
 
-Weights are stored as float8_e4m3fn and dequantized before a bf16 matmul —
-activation precision is untouched (unlike the FP8 path, which also
-quantizes activations for torch._scaled_mm).
+Conservative alternative to fp8_quantize: weights are *stored* as
+float8_e4m3fn with a per-output-channel scale, dequantized in-kernel, and all
+compute (accumulation and activations) stays bf16/fp32 — activation precision
+is untouched. The matmul is a hand-written Triton GEMV that streams the fp8
+weight matrix once and dequantizes in registers, so the memory-bandwidth win
+of 8-bit weights is kept without an fp8 matmul or activation scaling.
 
-Layer selection and forward-patching scaffolding (module walk,
-min_features gate, depformer-self_attn skip, bare in_proj handling,
-class-level gating/attention forward patches) is derived from
-fp8_quantize.py by amarrmb (github.com/amarrmb/personaplex), adapted to
-dispatch multiple quantization schemes per instance.
+Same integration contract as fp8_quantize:
 
-This commit uses a naive dequantize-then-cuBLAS linear as a correctness
-baseline; the fused Triton dequant-in-register GEMV and per-channel
-scaling land in the follow-up commit.
+    lm = loaders.get_moshi_lm(...)
+    quantize_model_w8a16(lm)   # replace weights + patch forwards
+    # ... warmup (CUDA graphs capture the Triton kernel) ...
+
+Layer coverage mirrors fp8_quantize exactly (same min_features gate, same
+depformer-self_attn skip, same bare in_proj handling) so the two schemes are
+directly comparable in latency and divergence measurements.
+
+The class-level forward patches dispatch on per-instance flags and also
+honor fp8_quantize's `_is_fp8` markers, so both schemes can coexist in one
+process (used by bench/divergence.py's three-way soak).
 """
 
 import logging
@@ -23,18 +30,91 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 logger = logging.getLogger(__name__)
 
 
-def w8a16_linear(x, w_fp8, scale, bias=None):
-    """Weight-only-8bit linear: dequantize to bf16, then cuBLAS.
+# ============================================================================
+# Triton GEMV: y[o] = (sum_i x[i] * W8[o,i]) * scale[o]   (bf16 x, fp8 W)
+#
+# Triton is imported lazily inside the builder so that `import moshi` and
+# this module work on CPU-only / Triton-less installs; the kernel is built
+# once and cached on first use.
+# ============================================================================
 
-    Naive correctness baseline — streams 1 byte/weight from memory only
-    after the dequant materialization, so it is NOT faster than bf16 yet;
-    the fused Triton GEMV replaces this in the next commit.
-    """
-    w = (w_fp8.to(torch.float32) * scale).to(x.dtype)
-    return F.linear(x, w, bias)
+_GEMV_KERNEL = None
+
+
+def _build_gemv_kernel():
+    global _GEMV_KERNEL
+    if _GEMV_KERNEL is not None:
+        return _GEMV_KERNEL
+    import importlib
+    g = globals()
+    g["triton"] = importlib.import_module("triton")
+    g["tl"] = importlib.import_module("triton.language")
+
+    @triton.jit
+    def _w8a16_gemv_kernel(
+        x_ptr, w_ptr, scale_ptr, bias_ptr, y_ptr,
+        IN: tl.constexpr, OUT,
+        HAS_BIAS: tl.constexpr,
+        BLOCK_OUT: tl.constexpr, BLOCK_IN: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        offs_o = pid * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
+        mask_o = offs_o < OUT
+        acc = tl.zeros((BLOCK_OUT,), dtype=tl.float32)
+        for i in range(0, IN, BLOCK_IN):
+            offs_i = i + tl.arange(0, BLOCK_IN)
+            mask_i = offs_i < IN
+            x = tl.load(x_ptr + offs_i, mask=mask_i, other=0.0).to(tl.float32)
+            w = tl.load(w_ptr + offs_o[:, None] * IN + offs_i[None, :],
+                        mask=mask_o[:, None] & mask_i[None, :],
+                        other=0.0).to(tl.float32)
+            acc += tl.sum(w * x[None, :], axis=1)
+        scale = tl.load(scale_ptr + offs_o, mask=mask_o, other=0.0)
+        y = acc * scale
+        if HAS_BIAS:
+            y += tl.load(bias_ptr + offs_o, mask=mask_o,
+                         other=0.0).to(tl.float32)
+        tl.store(y_ptr + offs_o, y.to(y_ptr.dtype.element_ty), mask=mask_o)
+
+    _GEMV_KERNEL = _w8a16_gemv_kernel
+    return _GEMV_KERNEL
+
+
+def w8a16_linear(x, w_fp8, scale, bias=None):
+    """Weight-only-8bit linear. x: [..., IN] bf16; w_fp8: [OUT, IN] fp8e4m3;
+    scale: [OUT] fp32. Compute fp32-accumulate, output bf16."""
+    orig_shape = x.shape
+    in_features = w_fp8.shape[1]
+    out_features = w_fp8.shape[0]
+    x2 = x.reshape(-1, in_features)
+    if x2.shape[0] != 1:
+        # Rare non-decode path (prompt batches etc.): correctness fallback,
+        # full dequant + cuBLAS.
+        w = (w_fp8.to(torch.float32) * scale[:, None]).to(x.dtype)
+        return F.linear(x, w, bias).reshape(*orig_shape[:-1], out_features)
+    y = torch.empty(1, out_features, device=x.device, dtype=x.dtype)
+    # Tuned on GB10 (see M2 microbench): big shapes are bandwidth-bound and
+    # favor long inner blocks; small depformer shapes favor more warps.
+    if in_features >= 4096:
+        BLOCK_OUT, BLOCK_IN, num_warps = 16, 512, 2
+    else:
+        BLOCK_OUT, BLOCK_IN, num_warps = 16, 256, 4
+    kernel = _build_gemv_kernel()
+    grid = ((out_features + BLOCK_OUT - 1) // BLOCK_OUT,)
+    kernel[grid](
+        x2, w_fp8, scale,
+        bias if bias is not None else scale,  # dummy ptr when no bias
+        y,
+        IN=in_features, OUT=out_features,
+        HAS_BIAS=bias is not None,
+        BLOCK_OUT=BLOCK_OUT, BLOCK_IN=BLOCK_IN,
+        num_warps=num_warps,
+    )
+    return y.reshape(*orig_shape[:-1], out_features)
 
 
 # ============================================================================
@@ -142,11 +222,10 @@ def _make_attn_forward():
 # ============================================================================
 
 def _quantize_weight(w):
-    """Per-tensor fp8e4m3 storage (as in fp8_quantize). Returns
-    (w_fp8, scale_fp32 scalar)."""
-    amax = w.abs().amax()
-    scale = (amax / 448.0).clamp(min=1e-12).float().view(1)
-    w_fp8 = (w.float() / scale).to(torch.float8_e4m3fn)
+    """Per-output-channel fp8e4m3 storage. Returns (w_fp8, scale_fp32)."""
+    amax = w.abs().amax(dim=1).float()
+    scale = (amax / 448.0).clamp(min=1e-12)
+    w_fp8 = (w.float() / scale[:, None]).to(torch.float8_e4m3fn)
     return w_fp8, scale
 
 
@@ -164,6 +243,15 @@ def quantize_model_w8a16(model, min_features=512):
     Coverage mirrors fp8_quantize.quantize_model: skips small linears and
     depformer self_attn; also converts main-attention bare in_proj_weight.
     """
+    import importlib.util
+    if not torch.cuda.is_available():
+        raise RuntimeError("--w8a16 requires a CUDA device.")
+    if importlib.util.find_spec("triton") is None:
+        raise RuntimeError(
+            "--w8a16 requires Triton for its dequant GEMV kernel; install "
+            "it with `pip install triton`. No silent fallback is provided: "
+            "without the kernel the flag cannot meet its performance "
+            "contract.")
     import moshi.modules.gating as gating_mod
     import moshi.modules.transformer as tf_mod
 

@@ -177,6 +177,7 @@ def run_inference(
     skip_other_mimi: bool = False,
     mimi_fp16: bool = False,
     fp8: bool = False,
+    w8a16: bool = False,
 ):
     """Run offline inference using an input WAV as the user-side stream.
 
@@ -236,6 +237,10 @@ def run_inference(
         from .fp8_quantize import quantize_model
         log("info", "applying FP8 quantization")
         quantize_model(lm)
+    elif w8a16:
+        from .w8a16_quantize import quantize_model_w8a16
+        log("info", "applying w8a16 weight-only quantization")
+        quantize_model_w8a16(lm)
     log("info", "moshi loaded")
 
     # 4) Construct LMGen like server.py's ServerState does
@@ -420,6 +425,10 @@ def main():
     parser.add_argument("--seed", type=int, default=-1, help="Seed for reproducibility (-1 disables)")
     parser.add_argument("--fp8", action="store_true",
                         help="Quantize LM linears to FP8 (torch._scaled_mm; requires SM >= 89)")
+    parser.add_argument("--w8a16", action="store_true",
+                        help="Weight-only 8-bit LM quantization, bf16 compute (Triton GEMV); exclusive with --fp8")
+    parser.add_argument("--fast", action="store_true",
+                        help="Preset: --w8a16 --dep-q-exit 8 --skip-other-mimi --mimi-fp16")
     parser.add_argument("--skip-other-mimi", action="store_true",
                         help="Skip the second mimi stream (its outputs are discarded in this path)")
     parser.add_argument("--mimi-fp16", action="store_true",
@@ -435,6 +444,25 @@ def main():
             raise RuntimeError(
                 "--mimi-fp16 uses torch.compile on CUDA, which requires "
                 "Triton; install it with `pip install triton`.")
+    if args.fast:
+        import importlib.util
+        missing = []
+        if not torch.cuda.is_available():
+            missing.append("a CUDA device (required by --w8a16/--mimi-fp16)")
+        if importlib.util.find_spec("triton") is None:
+            missing.append("Triton (required by --w8a16's dequant GEMV and "
+                           "--mimi-fp16's torch.compile path)")
+        if missing:
+            raise RuntimeError(
+                "--fast cannot meet its performance contract; missing: "
+                + "; ".join(missing) + ". No silent degradation is "
+                "provided — run without --fast or install the prerequisite.")
+        args.w8a16 = True
+        args.dep_q_exit = args.dep_q_exit or 8
+        args.skip_other_mimi = True
+        args.mimi_fp16 = True
+    if args.fp8 and args.w8a16:
+        parser.error("--fp8 and --w8a16 are mutually exclusive")
 
     # If --voice-prompt-dir is omitted, voices.tgz is downloaded from HF and extracted.
     voice_prompt_dir = _get_voice_prompt_dir(
@@ -480,6 +508,7 @@ def main():
             skip_other_mimi=args.skip_other_mimi,
             mimi_fp16=args.mimi_fp16,
             fp8=args.fp8,
+            w8a16=args.w8a16,
         )
 
 
