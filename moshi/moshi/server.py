@@ -342,7 +342,8 @@ class ServerState:
             opus_writer = sphn.OpusStreamWriter(self.mimi.sample_rate)
             opus_reader = sphn.OpusStreamReader(self.mimi.sample_rate)
             self.mimi.reset_streaming()
-            self.other_mimi.reset_streaming()
+            if self.other_mimi is not None:
+                self.other_mimi.reset_streaming()
             self.lm_gen.reset_streaming()
             async def is_alive():
                 if close or ws.closed:
