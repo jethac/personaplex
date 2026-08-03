@@ -99,7 +99,7 @@ class ServerState:
     def __init__(self, mimi: MimiModel, other_mimi: tp.Optional[MimiModel], text_tokenizer: sentencepiece.SentencePieceProcessor,
                  lm: LMModel, device: str | torch.device, voice_prompt_dir: str | None = None,
                  save_voice_prompt_embeddings: bool = False, fp8: bool = False,
-                 pinned_io: bool = False):
+                 pinned_io: bool = False, dep_q_exit: int = 0):
         self.mimi = mimi
         self.other_mimi = other_mimi
         self.text_tokenizer = text_tokenizer
@@ -113,6 +113,7 @@ class ServerState:
                             device=device,
                             frame_rate=self.mimi.frame_rate,
                             save_voice_prompt_embeddings=save_voice_prompt_embeddings,
+                            depformer_early_exit=dep_q_exit,
         )
         
         self.lock = asyncio.Lock()
@@ -482,8 +483,37 @@ def main():
     parser.add_argument(
         "--pinned-io", action="store_true",
         help="Use a pinned CPU buffer for DtoH audio transfer")
+    parser.add_argument(
+        "--w8a16", action="store_true",
+        help="Weight-only 8-bit LM quantization, bf16 compute (Triton GEMV); exclusive with --fp8")
+    parser.add_argument(
+        "--fast", action="store_true",
+        help="Preset: --w8a16 --dep-q-exit 8 --skip-other-mimi --mimi-fp16")
+    parser.add_argument(
+        "--dep-q-exit", type=int, default=0,
+        help="Stop the depformer after N steps (>=8). Safe in the serve flow "
+             "because user-side codebooks are always provided.")
 
     args = parser.parse_args()
+    if args.fast:
+        import importlib.util
+        missing = []
+        if not torch.cuda.is_available():
+            missing.append("a CUDA device (required by --w8a16/--mimi-fp16)")
+        if importlib.util.find_spec("triton") is None:
+            missing.append("Triton (required by --w8a16's dequant GEMV and "
+                           "--mimi-fp16's torch.compile path)")
+        if missing:
+            raise RuntimeError(
+                "--fast cannot meet its performance contract; missing: "
+                + "; ".join(missing) + ". No silent degradation is "
+                "provided — run without --fast or install the prerequisite.")
+        args.w8a16 = True
+        args.dep_q_exit = args.dep_q_exit or 8
+        args.skip_other_mimi = True
+        args.mimi_fp16 = True
+    if args.fp8 and args.w8a16:
+        parser.error("--fp8 and --w8a16 are mutually exclusive")
     args.voice_prompt_dir = _get_voice_prompt_dir(
         args.voice_prompt_dir,
         args.hf_repo,
@@ -520,13 +550,13 @@ def main():
     # No worries about double-counting since config.json will be cached the second time
     hf_hub_download(args.hf_repo, "config.json")
 
-    _perf_flags = (args.fp8 or args.skip_other_mimi or args.mimi_fp16
-                   or args.pinned_io)
+    _perf_flags = (args.fast or args.fp8 or args.w8a16 or args.skip_other_mimi
+                   or args.mimi_fp16 or args.pinned_io or args.dep_q_exit > 0)
     if (not _perf_flags and torch.cuda.is_available()
             and torch.cuda.get_device_capability() == (12, 1)):
         logger.info("GB10-class device detected (sm_121): real-time "
-                    "performance requires opt-in flags; try the flags in "
-                    "the GB10 PR notes (e.g. --fp8/--skip-other-mimi)")
+                    "performance requires opt-in flags; try --fast "
+                    "(see the GB10 PR notes)")
 
     logger.info("loading mimi")
     if args.mimi_weight is None:
@@ -564,6 +594,11 @@ def main():
         logger.info("applying FP8 quantization...")
         quantize_model(lm)
         logger.info("FP8 quantization complete")
+    elif args.w8a16:
+        from .w8a16_quantize import quantize_model_w8a16
+        logger.info("applying w8a16 weight-only quantization...")
+        quantize_model_w8a16(lm)
+        logger.info("w8a16 quantization complete")
     logger.info("moshi loaded")
     state = ServerState(
         mimi=mimi,
@@ -575,6 +610,7 @@ def main():
         save_voice_prompt_embeddings=False,
         fp8=args.fp8,
         pinned_io=args.pinned_io,
+        dep_q_exit=args.dep_q_exit,
     )
     logger.info("warming up the model")
     state.warmup()
